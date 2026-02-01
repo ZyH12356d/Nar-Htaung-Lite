@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Net.Http.Json;
 using System.Text;
 using YoutubeExplode;
 using YoutubeExplode.Common;
@@ -40,45 +41,65 @@ namespace MusicPlayer.Components.Pages.Search
         }
         private async Task DownloadAudio(VideoSearchResult video)
         {
-            // 1. Give the user immediate feedback in the UI
             isSearching = true;
             StateHasChanged();
 
-            await Task.Run(async () =>
+            try
             {
-                try
+                var httpClient = new HttpClient();
+
+                var requestBody = new
                 {
-                    // Use a Timeout so it doesn't hang forever if internet is slow
-                    using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+                    url = video.Url
+                };
 
-                    // Get manifest without blocking the UI
-                    var streamManifest = await youtube.Videos.Streams.GetManifestAsync(video.Id)
-                        .ConfigureAwait(false);
+                var response = await httpClient.PostAsJsonAsync(
+                    "http://192.168.100.15:5000/download/audio",
+                    requestBody
+                );
 
-                    var streamInfo = streamManifest.GetAudioOnlyStreams().GetWithHighestBitrate();
-
-                    // Prepare File Path
-                    string folder = FileSystem.Current.AppDataDirectory;
-                    string cleanName = string.Join("_", video.Title.Split(Path.GetInvalidFileNameChars()));
-                    string filePath = Path.Combine(folder, $"{cleanName}.mp3");
-
-                    // Use DownloadAsync with the cancellation token
-                    await youtube.Videos.Streams.DownloadAsync(streamInfo, filePath, null, cts.Token)
-                        .ConfigureAwait(false);
-
-                    await MainThread.InvokeOnMainThreadAsync(async () => {
-                        isSearching = false;
-                        await App.Current.MainPage.DisplayAlert("Success", "Saved!", "OK");
-                    });
-                }
-                catch (Exception ex)
+                if (!response.IsSuccessStatusCode)
                 {
-                    await MainThread.InvokeOnMainThreadAsync(async () => {
-                        isSearching = false;
-                        await App.Current.MainPage.DisplayAlert("Download Failed", ex.Message, "OK");
-                    });
+                    throw new Exception("Failed to download audio.");
                 }
-            }).ConfigureAwait(false);
+
+                // Get filename from response header
+                var contentDisposition = response.Content.Headers.ContentDisposition;
+                var fileName = contentDisposition?.FileName?.Trim('"')
+                              ?? $"{video.Id}.m4a";
+
+                // App local storage
+                var filePath = Path.Combine(
+                    FileSystem.AppDataDirectory,
+                    fileName
+                );
+
+                await using var stream = await response.Content.ReadAsStreamAsync();
+                await using var fileStream = File.Create(filePath);
+                await stream.CopyToAsync(fileStream);
+
+                await MainThread.InvokeOnMainThreadAsync(async () =>
+                {
+                    isSearching = false;
+                    await App.Current.MainPage.DisplayAlert(
+                        "Downloaded",
+                        $"Saved to:\n{filePath}",
+                        "OK"
+                    );
+                });
+            }
+            catch (Exception ex)
+            {
+                await MainThread.InvokeOnMainThreadAsync(async () =>
+                {
+                    isSearching = false;
+                    await App.Current.MainPage.DisplayAlert(
+                        "Download Failed",
+                        ex.Message,
+                        "OK"
+                    );
+                });
+            }
         }
     }
 }

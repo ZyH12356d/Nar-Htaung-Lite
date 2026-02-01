@@ -1,5 +1,79 @@
 ﻿@page "/"
+@using System.IO
 
-<h1>Hello, world!</h1>
+<PageTitle>Nar Htaung Lite - Library</PageTitle>
 
-Welcome to your new app.
+<h1>My Library</h1>
+
+@if (downloadedFiles == null || !downloadedFiles.Any())
+{
+    <p>No music found. Go to the Search page to download some tracks!</p>
+}
+else
+{
+    <div class="list-group">
+        @foreach (var file in downloadedFiles)
+        {
+            <div class="list-group-item d-flex justify-content-between align-items-center">
+                <span style="cursor:pointer; color: blue;" @onclick="() => PlaySong(file)">
+                    🎵 @Path.GetFileName(file)
+                </span>
+                <button class="btn btn-danger btn-sm" @onclick="() => DeleteSong(file)">Delete</button>
+            </div>
+        }
+    </div>
+}
+
+<hr />
+
+@if (!string.IsNullOrEmpty(activeSongSource))
+{
+    <div class="fixed-bottom p-3 bg-light border-top">
+        <p><strong>Now Playing:</strong> @Path.GetFileName(activeSongPath)</p>
+        <audio autoplay controls src="@activeSongSource" style="width: 100%;"></audio>
+    </div>
+}
+
+@code {
+    private List<string> downloadedFiles = new();
+    private string activeSongSource = "";
+    private string activeSongPath = "";
+
+    protected override void OnInitialized()
+    {
+        RefreshLibrary();
+    }
+
+    private void RefreshLibrary()
+    {
+        // Get all .mp3 and .m4a files from your AppDataDirectory
+        var path = FileSystem.AppDataDirectory;
+        downloadedFiles = Directory.EnumerateFiles(path)
+                            .Where(f => f.EndsWith(".mp3") || f.EndsWith(".m4a") || f.EndsWith(".webm"))
+                            .ToList();
+    }
+
+    private async Task PlaySong(string filePath)
+    {
+        activeSongPath = filePath;
+
+        // Convert the file bytes to a Base64 string so the <audio> tag can read it
+        byte[] fileBytes = await File.ReadAllBytesAsync(filePath);
+        string base64 = Convert.ToBase64String(fileBytes);
+
+        // This creates a data URL (e.g., data:audio/mpeg;base64,xxxx...)
+        activeSongSource = $"data:audio/mpeg;base64,{base64}";
+
+        StateHasChanged();
+    }
+
+    private void DeleteSong(string filePath)
+    {
+        if (File.Exists(filePath))
+        {
+            File.Delete(filePath);
+            if (activeSongPath == filePath) activeSongSource = "";
+            RefreshLibrary();
+        }
+    }
+}
