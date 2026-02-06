@@ -59,7 +59,13 @@ def download_video(url, resolution):
     
 def download_audio(url):
     try:
-        yt = YouTube(url)
+        # yt = YouTube(url)
+        yt = YouTube(
+            url, 
+            use_oauth=True, 
+            allow_oauth_cache=True,
+            token_file='token.json' # This stores the login info
+        )
 
         # Get best quality audio-only stream
         stream = yt.streams.filter(only_audio=True).order_by('abr').desc().first()

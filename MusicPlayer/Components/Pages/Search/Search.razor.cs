@@ -52,7 +52,7 @@ namespace MusicPlayer.Components.Pages.Search
             try
             {
                 var response = await httpClient.PostAsJsonAsync(
-                    "https://zayarhtoo.pythonanywhere.com/download/audio",
+                    "https://nar-htaung-lite.onrender.com/download/audio",
                     requestBody
                 );
 
