@@ -1,4 +1,5 @@
 from io import BytesIO
+import os
 from flask import Flask, request, jsonify, send_file
 from pytubefix import YouTube
 import re
@@ -60,11 +61,13 @@ def download_video(url, resolution):
 def download_audio(url):
     try:
         # yt = YouTube(url)
+        BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+        TOKEN_PATH = os.path.join(BASE_DIR, "token.json")
         yt = YouTube(
             url, 
             use_oauth=True, 
             allow_oauth_cache=True,
-            token_file='token.json' # This stores the login info
+            token_file=TOKEN_PATH # This stores the login info
         )
 
         # Get best quality audio-only stream
