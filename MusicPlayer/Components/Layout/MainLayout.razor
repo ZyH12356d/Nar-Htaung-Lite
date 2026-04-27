@@ -1,0 +1,37 @@
+@inherits LayoutComponentBase
+
+<div class="app-layout" data-theme="@_theme">
+    <div class="theme-toggle-btn" @onclick="ToggleTheme">
+        @if (_theme == "light")
+        {
+            <span style="font-size: 1.5rem;">🌙</span>
+        }
+        else
+        {
+            <span style="font-size: 1.5rem;">☀️</span>
+        }
+    </div>
+
+    <main class="main-content">
+        @Body
+    </main>
+
+    <div class="bottom-nav-container">
+        <NavMenu />
+    </div>
+
+    @* Global Player Overlay (Mini + Full) *@
+    <PlayerOverlay />
+</div>
+
+@code {
+    private string _theme = "dark";
+
+    [Inject] private Services.PlayerService PlayerService { get; set; } = default!;
+
+    private void ToggleTheme()
+    {
+        _theme = _theme == "light" ? "dark" : "light";
+        StateHasChanged();
+    }
+}

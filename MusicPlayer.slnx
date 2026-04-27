@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="MusicPlayer/MusicPlayer.csproj">
+    <Deploy Solution="Debug|*" />
+  </Project>
+  <Project Path="MusicPlayerApi/MusicPlayerApi.csproj" Id="a5e829a5-ecfb-4699-b8a5-57b241b15268" />
+</Solution>

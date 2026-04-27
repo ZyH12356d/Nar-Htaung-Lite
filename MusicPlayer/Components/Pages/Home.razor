@@ -1,0 +1,56 @@
+@page "/"
+@using System.IO
+@using MusicPlayer.Models
+
+<PageTitle>Nar Htaung Lite - Dashboard</PageTitle>
+
+<div class="container pb-5">
+    <h1 class="mt-3 mb-4">Dashboard</h1>
+
+    @if (downloadedSongs == null || !downloadedSongs.Any())
+    {
+        <div class="alert alert-info border-0 shadow-sm" style="background-color: var(--bg-surface); color: var(--text-default);">
+            <p class="mb-0">No music found. Go to the Search page to download some tracks!</p>
+        </div>
+    }
+    else
+    {
+        <div class="list-group">
+            @foreach (var song in downloadedSongs)
+            {
+                <div class="list-group-item d-flex justify-content-between align-items-center @(PlayerService.CurrentSong?.FilePath == song.FilePath ? "bg-info text-white" : "")">
+                    <div class="d-flex align-items-center" style="cursor:pointer;" @onclick="() => PlayAndExpand(song)">
+                        @if (!string.IsNullOrEmpty(song.ThumbnailDataUrl))
+                        {
+                            <img src="@song.ThumbnailDataUrl" 
+                                 style="width: 50px; height: 50px; border-radius: 8px; margin-right: 15px; object-fit: cover; flex-shrink: 0;" />
+                        }
+                        else
+                        {
+                            <div class="bg-secondary d-flex align-items-center justify-content-center" style="width: 50px; height: 50px; border-radius: 8px; margin-right: 15px; flex-shrink: 0;">
+                                <span class="material-symbols-outlined" style="font-size: 1.5rem; color: white;">music_note</span>
+                            </div>
+                        }
+                        <div>
+                            <div class="fw-bold">@song.Title</div>
+                            <small class="text-muted @(PlayerService.CurrentSong?.FilePath == song.FilePath ? "text-white-50" : "")">@song.Author</small>
+                        </div>
+                    </div>
+                    @* <button class="btn btn-danger btn-sm" @onclick="() => DeleteSong(song)">Delete</button> *@
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private void PlayAndExpand(Song song)
+    {
+        _ = PlayerService.PlaySong(song);
+        PlayerService.IsPlayerExpanded = true;
+    }
+}
+
+<style>
+    .extra-small { font-size: 0.7rem; }
+</style>

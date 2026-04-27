@@ -1,0 +1,44 @@
+@page "/search"
+@using YoutubeExplode
+@using YoutubeExplode.Common
+@using YoutubeExplode.Search
+<div class="container pb-5" style="padding-top: 2rem;">
+<h3>YouTube Search</h3>
+
+<div class="input-group mb-3">
+    <input type="text" class="form-control" placeholder="Song name..." @bind="searchQuery" />
+    <button class="btn btn-primary" @onclick="HandleSearch">Search</button>
+</div>
+
+@if (isSearching)
+{
+    <p><em>Searching...</em></p>
+}
+
+@if (isDownloading)
+{
+    <div class="alert alert-info">
+        <em>Downloading audio... please wait.</em>
+    </div>
+}
+
+@if (results.Any())
+{
+    <div class="list-group">
+        @foreach (var video in results)
+        {
+            <div class="list-group-item d-flex align-items-center">
+                <img src="@video.Thumbnails.OrderByDescending(t => t.Resolution.Width).FirstOrDefault()?.Url"
+                     style="width: 120px; border-radius: 8px; margin-right: 15px;" />
+                <div>
+                    <h5>@video.Title</h5>
+                    <p class="text-muted">@video.Author.ChannelTitle</p>
+                    <button class="btn btn-sm btn-success" @onclick="() => DownloadAudio(video)" disabled="@isDownloading">
+                        Download Audio
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+}
+</div>

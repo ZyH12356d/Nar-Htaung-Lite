@@ -1,0 +1,259 @@
+@using MusicPlayer.Services
+@using MusicPlayer.Models
+@inject PlayerService PlayerService
+@implements IDisposable
+
+@if (PlayerService.CurrentSong != null)
+{
+    @* Mini Player Bar - always visible if a song is selected *@
+    <div class="mini-player-bar" @onclick="ExpandPlayer">
+        <div class="d-flex align-items-center flex-grow-1 overflow-hidden">
+            @if (!string.IsNullOrEmpty(PlayerService.CurrentSong.ThumbnailDataUrl))
+            {
+                <img src="@PlayerService.CurrentSong.ThumbnailDataUrl" 
+                     style="width: 44px; height: 44px; border-radius: 6px; margin-right: 12px; object-fit: cover;" />
+            }
+            <div class="text-truncate">
+                <div class="fw-bold small text-truncate">@PlayerService.CurrentSong.Title</div>
+                <div class="extra-small text-muted text-truncate">@PlayerService.CurrentSong.Author</div>
+            </div>
+            
+        </div>
+        <div class="d-flex align-items-center">
+            <button class="btn btn-link text-default mx-1" @onclick:stopPropagation="true" @onclick="PlayerService.TogglePlayPause">
+                @if (PlayerService.IsPlaying)
+                {
+                    <span style="font-size: 1.2rem;">⏸️</span>
+                }
+                else
+                {
+                    <span style="font-size: 1.2rem;">▶️</span>
+                }
+            </button>
+            <button class="btn btn-link text-default mx-1" @onclick:stopPropagation="true" @onclick="PlayerService.PlayNext">
+                <span style="font-size: 1rem;">⏭️</span>
+            </button>
+        </div>
+    </div>
+
+    @* Full-Screen Player Overlay - Restored Premium UI *@
+    <div class="player-overlay @(PlayerService.IsPlayerExpanded ? "expanded" : "")">
+        
+        <header class="player-header">
+            <button class="icon-btn" @onclick="CollapsePlayer" title="Minimize">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+            </button>
+            <span class="header-title">Now Playing</span>
+            <div style="width: 40px;"></div>
+        </header>
+
+        <main class="player-content">
+            <div class="thumbnail-container">
+                <div class="thumbnail-wrapper">
+                    @if (!string.IsNullOrEmpty(PlayerService.CurrentSong.ThumbnailDataUrl))
+                    {
+                        <img src="@PlayerService.CurrentSong.ThumbnailDataUrl" alt="Thumbnail" class="thumbnail-img" />
+                    }
+                    else
+                    {
+                        <div class="thumbnail-placeholder">
+                            <span class="material-symbols-outlined" style="font-size: 80px; color: rgba(255,255,255,0.5);">music_note</span>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div class="song-info">
+                <h2 class="song-title">@PlayerService.CurrentSong.Title</h2>
+                <p class="song-author">@PlayerService.CurrentSong.Author</p>
+            </div>
+
+            @* Progress/Seek Bar - Stylized *@
+            <div class="seek-container w-100 px-2 mb-4">
+                <input type="range" class="form-range custom-range" 
+                       min="0" max="@PlayerService.Duration" step="1"
+                       value="@(IsDragging ? DragPosition : PlayerService.CurrentPosition)" 
+                       @oninput="OnDrag" @onchange="OnSeekEnd" />
+                <div class="d-flex justify-content-between mt-1">
+                    <span class="time-label">@FormatTime(IsDragging ? DragPosition : PlayerService.CurrentPosition)</span>
+                    <span class="time-label">@FormatTime(PlayerService.Duration)</span>
+                </div>
+            </div>
+
+            <div class="playback-controls">
+                <button class="ctrl-btn @(PlayerService.IsShuffle ? "active" : "")" @onclick="() => PlayerService.IsShuffle = !PlayerService.IsShuffle">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>
+                </button>
+                
+                <button class="ctrl-btn" @onclick="PlayerService.PlayPrevious">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="19 20 9 12 19 4 19 20"></polygon><line x1="5" y1="19" x2="5" y2="5"></line></svg>
+                </button>
+                
+                <button class="play-btn" @onclick="PlayerService.TogglePlayPause">
+                    @if (PlayerService.IsPlaying)
+                    {
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+                    }
+                    else
+                    {
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                    }
+                </button>
+                
+                <button class="ctrl-btn" @onclick="PlayerService.PlayNext">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg>
+                </button>
+                
+                <button class="ctrl-btn @(PlayerService.IsRepeat ? "active" : "")" @onclick="() => PlayerService.IsRepeat = !PlayerService.IsRepeat">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>
+                </button>
+            </div>
+        </main>
+    </div>
+}
+
+@code {
+    private bool IsDragging { get; set; }
+    private double DragPosition { get; set; }
+
+    protected override void OnInitialized()
+    {
+        PlayerService.PropertyChanged += HandlePropertyChanged;
+    }
+
+    private void HandlePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        // Don't update if we are dragging and the position changed in the background
+        if (IsDragging && e.PropertyName == nameof(PlayerService.CurrentPosition))
+            return;
+
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void ExpandPlayer() => PlayerService.IsPlayerExpanded = true;
+    private void CollapsePlayer() => PlayerService.IsPlayerExpanded = false;
+
+    private void OnDrag(ChangeEventArgs e)
+    {
+        IsDragging = true;
+        if (double.TryParse(e.Value?.ToString(), out var pos))
+        {
+            DragPosition = pos;
+        }
+    }
+
+    private void OnSeekEnd(ChangeEventArgs e)
+    {
+        if (double.TryParse(e.Value?.ToString(), out var pos))
+        {
+            PlayerService.Seek(pos);
+        }
+        IsDragging = false;
+    }
+
+    private string FormatTime(double seconds)
+    {
+        var time = TimeSpan.FromSeconds(seconds);
+        return $"{(int)time.TotalMinutes}:{time.Seconds:D2}";
+    }
+
+    public void Dispose()
+    {
+        PlayerService.PropertyChanged -= HandlePropertyChanged;
+    }
+}
+
+<style>
+    .player-overlay {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        color: var(--text-default);
+        font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        background-color: var(--bg-default);
+        transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        z-index: 2000;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .player-header {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 1.5rem; 
+        padding-top: calc(env(safe-area-inset-top, 0px) + 1.5rem);
+        z-index: 10;
+    }
+
+    .header-title {
+        font-size: 0.9rem; font-weight: 600; letter-spacing: 1px;
+        text-transform: uppercase; opacity: 0.8;
+    }
+
+    .icon-btn {
+        background: var(--bg-surface); border: 1px solid var(--border-color);
+        color: var(--text-default); width: 40px; height: 40px; border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .player-content {
+        flex: 1; display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        padding: 2rem;
+    }
+
+    .thumbnail-container {
+        width: 100%; max-width: 320px; aspect-ratio: 1/1;
+        margin-bottom: 2.5rem;
+        display: flex; align-items: center; justify-content: center;
+    }
+
+    .thumbnail-wrapper {
+        width: 100%; height: 100%; border-radius: 24px;
+        overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+        background: var(--bg-surface); border: 1px solid var(--border-color);
+        display: flex; align-items: center; justify-content: center;
+    }
+
+    .thumbnail-img { width: 100%; height: 100%; object-fit: cover; }
+
+    .thumbnail-placeholder {
+        width: 100%; height: 100%;
+        display: flex; align-items: center; justify-content: center;
+        background: linear-gradient(135deg, #1b6ec2, #4dabf7);
+    }
+
+    .song-info { text-align: center; margin-bottom: 2.5rem; width: 100%; }
+
+    .song-title {
+        font-size: 1.6rem; font-weight: 700; margin-bottom: 0.5rem;
+        color: var(--text-default);
+    }
+
+    .song-author { font-size: 1rem; color: var(--text-muted); }
+
+    .seek-container { margin-bottom: 2.5rem; }
+
+    .custom-range {
+        height: 6px; border-radius: 3px; background: var(--border-color);
+        accent-color: var(--nav-icon-active); cursor: pointer;
+    }
+
+    .time-label { font-size: 0.8rem; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--text-muted); }
+
+    .playback-controls { display: flex; align-items: center; justify-content: center; gap: 1.8rem; }
+
+    .ctrl-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; transition: color 0.1s; }
+    .ctrl-btn:active { color: var(--text-default); }
+    .ctrl-btn.active { color: var(--nav-icon-active); }
+
+    .play-btn {
+        width: 72px; height: 72px; border-radius: 50%;
+        background: var(--text-default); color: var(--bg-default); border: none;
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+        transition: transform 0.1s;
+    }
+    .play-btn:active { transform: scale(0.92); }
+</style>
