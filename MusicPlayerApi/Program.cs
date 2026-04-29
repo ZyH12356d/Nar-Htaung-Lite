@@ -1,5 +1,6 @@
 using YoutubeExplode;
 using YoutubeExplode.Common;
+using YoutubeExplode.Converter;
 using YoutubeExplode.Videos;
 using YoutubeExplode.Videos.Streams;
 var builder = WebApplication.CreateBuilder(args);
@@ -77,31 +78,63 @@ app.MapGet("/audio", async (string id) =>
     try
     {
         var youtube = new YoutubeClient();
+        var video = await youtube.Videos.GetAsync(id);
 
-        // 1. Get the manifest
-        var manifest = await youtube.Videos.Streams.GetManifestAsync(id);
+        var tempFilePath = Path.GetTempFileName() + ".mp3";
 
-        // 2. Select the highest bitrate audio stream
-        var audioStreamInfo = manifest.GetAudioOnlyStreams().GetWithHighestBitrate();
+        // Download and convert to MP3 using FFmpeg
+        await youtube.Videos.DownloadAsync(id, tempFilePath, builder => builder.SetContainer("mp3").SetPreset(YoutubeExplode.Converter.ConversionPreset.UltraFast));
 
-        if (audioStreamInfo == null)
-            return Results.NotFound("No compatible audio stream found.");
+        // Download the thumbnail for Cover Art
+        byte[]? thumbBytes = null;
+        var thumb = video.Thumbnails.GetWithHighestResolution();
+        if (thumb != null)
+        {
+            using var httpClient = new HttpClient();
+            thumbBytes = await httpClient.GetByteArrayAsync(thumb.Url);
+        }
 
-        // 3. Get the actual stream from YouTube
-        var stream = await youtube.Videos.Streams.GetAsync(audioStreamInfo);
+        // Embed ID3 Tags using TagLibSharp
+        using (var tfile = TagLib.File.Create(tempFilePath))
+        {
+            tfile.Tag.Title = video.Title;
+            tfile.Tag.Performers = new[] { video.Author.ChannelTitle };
 
-        // 4. Return the stream directly to the client
-        return Results.Stream(
-            stream,
-            contentType: $"audio/{audioStreamInfo.Container.Name}",
-            fileDownloadName: $"{id}.{audioStreamInfo.Container.Name}"
-        );
+            if (thumbBytes != null)
+            {
+                var picture = new TagLib.Picture(new TagLib.ByteVector(thumbBytes))
+                {
+                    Type = TagLib.PictureType.FrontCover,
+                    Description = "Cover",
+                    MimeType = "image/jpeg"
+                };
+                tfile.Tag.Pictures = new TagLib.IPicture[] { picture };
+            }
+
+            tfile.Save();
+        }
+
+        // Return the modified file and delete it after sending
+        var fs = new FileStream(tempFilePath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.DeleteOnClose);
+        
+        // Clean up title for file download name
+        var safeTitle = string.Join("_", video.Title.Split(Path.GetInvalidFileNameChars()));
+        
+        return Results.File(fs, contentType: "audio/mpeg", fileDownloadName: $"{safeTitle}.mp3");
     }
     catch (Exception ex)
     {
         return Results.Problem(ex.Message);
     }
 });
+
+// Download FFmpeg locally if not found
+if (!System.IO.File.Exists("ffmpeg.exe")) 
+{
+    Console.WriteLine("Downloading FFmpeg...");
+    await Xabe.FFmpeg.Downloader.FFmpegDownloader.GetLatestVersion(Xabe.FFmpeg.Downloader.FFmpegVersion.Official);
+    Console.WriteLine("FFmpeg downloaded locally.");
+}
 
 app.Run();
 

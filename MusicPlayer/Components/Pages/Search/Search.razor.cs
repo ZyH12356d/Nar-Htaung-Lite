@@ -49,46 +49,39 @@ namespace MusicPlayer.Components.Pages.Search
                 var httpClient = new HttpClient();
                 var baseUrl = DeviceInfo.Platform == DevicePlatform.Android ? "http://10.1.40.23:5181" : "http://localhost:5181";
                 
-                // 1. Request the stream from the backend
-                var response = await httpClient.GetAsync($"{baseUrl}/audio?id={video.Id}");
+                // 1. Request the Song model from the backend
+                var song = await httpClient.GetFromJsonAsync<Song>($"{baseUrl}/audio?id={video.Id}");
 
-                if (!response.IsSuccessStatusCode)
+                if (song == null || song.SongFile == null)
                 {
                     await MainThread.InvokeOnMainThreadAsync(async () =>
                     {
-                        var error = await response.Content.ReadAsStringAsync();
-                        await App.Current.MainPage.DisplayAlert("API Error", $"Status: {response.StatusCode}\n{error}", "OK");
+                        await App.Current.MainPage.DisplayAlert("API Error", "Failed to get song data from API.", "OK");
                     });
                     return;
                 }
 
                 // 2. Prepare the local file paths
-                var sanitizedTitle = string.Join("_", video.Title.Split(Path.GetInvalidFileNameChars()));
-                var contentType = response.Content.Headers.ContentType?.MediaType ?? "audio/webm";
-                var extension = contentType.Contains("/") ? contentType.Split('/').Last() : "m4a";
-                var fileName = $"{sanitizedTitle}.{extension}";
+                var sanitizedTitle = string.Join("_", song.Title.Split(Path.GetInvalidFileNameChars()));
+                var fileName = $"{sanitizedTitle}.webm";
                 var thumbName = $"{sanitizedTitle}.jpg";
                 
                 var filePath = Path.Combine(FileSystem.AppDataDirectory, fileName);
                 var thumbPath = Path.Combine(FileSystem.AppDataDirectory, thumbName);
 
-                // 3. Download the audio stream
-                using (var stream = await response.Content.ReadAsStreamAsync())
-                using (var fileStream = File.Create(filePath))
-                {
-                    await stream.CopyToAsync(fileStream);
-                }
+                // 3. Save the audio file
+                await File.WriteAllBytesAsync(filePath, song.SongFile);
 
-                // 4. Download and save the thumbnail
-                var thumbUrl = video.Thumbnails.OrderByDescending(t => t.Resolution.Width).FirstOrDefault()?.Url;
-                if (!string.IsNullOrEmpty(thumbUrl))
+                // 4. Save the thumbnail
+                if (!string.IsNullOrEmpty(song.ThumbnailDataUrl))
                 {
                     try 
                     {
-                        var thumbBytes = await httpClient.GetByteArrayAsync(thumbUrl);
+                        var base64Data = song.ThumbnailDataUrl.Contains(",") ? song.ThumbnailDataUrl.Split(',')[1] : song.ThumbnailDataUrl;
+                        var thumbBytes = Convert.FromBase64String(base64Data);
                         await File.WriteAllBytesAsync(thumbPath, thumbBytes);
                     }
-                    catch { /* Ignore thumbnail download errors */ }
+                    catch { /* Ignore thumbnail save errors */ }
                 }
 
                 await MainThread.InvokeOnMainThreadAsync(async () =>
