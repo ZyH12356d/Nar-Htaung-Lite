@@ -22,6 +22,7 @@ namespace MusicPlayer
 #endif
             builder.Services.AddSingleton<HttpClient>();
             builder.Services.AddSingleton<MusicPlayer.Services.PlayerService>();
+            builder.Services.AddSingleton<MusicPlayer.Services.DownloadService>();
             builder.Services.AddSingleton(Plugin.Maui.Audio.AudioManager.Current);
 
             return builder.Build();

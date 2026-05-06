@@ -1,0 +1,87 @@
+@page "/downloads"
+@using MusicPlayer.Models
+@using MusicPlayer.Services
+@inject DownloadService DownloadService
+@implements IDisposable
+
+<div class="container pb-5" style="padding-top: 2rem;">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3>Downloads</h3>
+        <button class="btn btn-outline-danger btn-sm" @onclick="DownloadService.ClearHistory">
+            Clear History
+        </button>
+    </div>
+
+    @if (!DownloadService.Downloads.Any())
+    {
+        <div class="text-center mt-5">
+            <span class="material-symbols-outlined" style="font-size: 4rem; color: #ccc;">download_done</span>
+            <p class="text-muted">No downloads yet.</p>
+        </div>
+    }
+    else
+    {
+        <div class="list-group">
+            @foreach (var item in DownloadService.Downloads)
+            {
+                <div class="list-group-item d-flex align-items-center mb-2 shadow-sm rounded border-0">
+                    <img src="@item.ThumbnailUrl" style="width: 80px; height: 45px; object-fit: cover; border-radius: 4px; margin-right: 15px;" />
+                    
+                    <div class="flex-grow-1 overflow-hidden">
+                        <h6 class="mb-0 text-truncate">@item.Title</h6>
+                        <small class="text-muted d-block">@item.Author</small>
+                        
+                        <div class="d-flex align-items-center mt-1">
+                            @switch (item.Status)
+                            {
+                                case DownloadStatus.Waiting:
+                                    <span class="badge bg-secondary me-2">Waiting</span>
+                                    break;
+                                case DownloadStatus.Processing:
+                                    <span class="badge bg-primary me-2">Processing...</span>
+                                    break;
+                                case DownloadStatus.Downloading:
+                                    <div class="w-100 me-2">
+                                        <div class="progress" style="height: 8px;">
+                                            <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                                 role="progressbar" 
+                                                 style="width: @(item.Progress)%"></div>
+                                        </div>
+                                    </div>
+                                    <small class="text-primary font-weight-bold">@item.Progress%</small>
+                                    break;
+                                case DownloadStatus.Completed:
+                                    <span class="badge bg-success me-2">Completed</span>
+                                    break;
+                                case DownloadStatus.Failed:
+                                    <span class="badge bg-danger me-2">Failed</span>
+                                    <small class="text-danger text-truncate">@item.ErrorMessage</small>
+                                    break;
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    protected override void OnInitialized()
+    {
+        // Subscribe to changes if needed, but ObservableCollection usually handles basic list updates.
+        // DownloadItem implements INotifyPropertyChanged which Radzen/Blazor can sometimes bound to,
+        // but we might need StateHasChanged if the UI doesn't refresh automatically on item property changes.
+        DownloadService.Downloads.CollectionChanged += (s, e) => InvokeAsync(StateHasChanged);
+        
+        // Timer to refresh UI for progress bars
+        _refreshTimer = new Timer(_ => InvokeAsync(StateHasChanged), null, 0, 500);
+    }
+
+    private Timer? _refreshTimer;
+
+    public void Dispose()
+    {
+        _refreshTimer?.Dispose();
+    }
+}

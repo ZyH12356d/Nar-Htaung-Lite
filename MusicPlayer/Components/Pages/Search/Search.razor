@@ -15,13 +15,6 @@
     <p><em>Searching...</em></p>
 }
 
-@if (isDownloading)
-{
-    <div class="alert alert-info">
-        <em>Downloading audio... please wait.</em>
-    </div>
-}
-
 @if (results.Any())
 {
     <div class="list-group">
@@ -33,8 +26,8 @@
                 <div>
                     <h5>@video.Title</h5>
                     <p class="text-muted">@video.Author.ChannelTitle</p>
-                    <button class="btn btn-sm btn-success" @onclick="() => DownloadAudio(video)" disabled="@isDownloading">
-                        Download Audio
+                    <button class="btn btn-sm btn-success" @onclick="() => DownloadAudio(video)">
+                        Download
                     </button>
                 </div>
             </div>
