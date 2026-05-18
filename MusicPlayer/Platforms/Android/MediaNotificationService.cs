@@ -31,13 +31,14 @@ namespace MusicPlayer.Platforms.Android
             _mediaSession.Active = true;
         }
 
-        public void UpdateMetadata(string title, string author, string thumbnailUrl)
+        public void UpdateMetadata(string title, string author, string thumbnailUrl, double durationSeconds)
         {
             var context = Platform.CurrentActivity;
 
             var metadataBuilder = new MediaMetadata.Builder()
                 .PutString(MediaMetadata.MetadataKeyTitle, title)
-                .PutString(MediaMetadata.MetadataKeyArtist, author);
+                .PutString(MediaMetadata.MetadataKeyArtist, author)
+                .PutLong(MediaMetadata.MetadataKeyDuration, (long)(durationSeconds * 1000));
 
             _mediaSession.SetMetadata(metadataBuilder.Build());
 
@@ -54,11 +55,13 @@ namespace MusicPlayer.Platforms.Android
             _notificationManager.Notify(NotificationId, notificationBuilder.Build());
         }
 
-        public void UpdatePlaybackStatus(bool isPlaying)
+        public void UpdatePlaybackStatus(bool isPlaying, double positionSeconds)
         {
             var state = isPlaying ? PlaybackStateCode.Playing : PlaybackStateCode.Paused;
+            var speed = isPlaying ? 1.0f : 0.0f;
+
             _mediaSession.SetPlaybackState(new PlaybackState.Builder()
-                .SetState(state, PlaybackState.PlaybackPositionUnknown, 1.0f)
+                .SetState(state, (long)(positionSeconds * 1000), speed)
                 .Build());
         }
     }

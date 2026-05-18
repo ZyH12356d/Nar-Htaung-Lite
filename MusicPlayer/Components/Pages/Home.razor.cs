@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Components;
 
 namespace MusicPlayer.Components.Pages
 {
-    partial class Home
+    partial class Home : IDisposable
     {
         [Inject] private PlayerService PlayerService { get; set; } = default!;
         [Inject] private NavigationManager NavigationManager { get; set; } = default!;
@@ -17,6 +17,20 @@ namespace MusicPlayer.Components.Pages
         protected override void OnInitialized()
         {
             RefreshLibrary();
+            PlayerService.PropertyChanged += OnPlayerServicePropertyChanged;
+        }
+
+        private void OnPlayerServicePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(PlayerService.CurrentSong) || e.PropertyName == nameof(PlayerService.IsPlaying))
+            {
+                _ = InvokeAsync(StateHasChanged);
+            }
+        }
+
+        public void Dispose()
+        {
+            PlayerService.PropertyChanged -= OnPlayerServicePropertyChanged;
         }
 
         private void RefreshLibrary()
@@ -24,6 +38,9 @@ namespace MusicPlayer.Components.Pages
             var path = FileSystem.AppDataDirectory;
             var files = Directory.EnumerateFiles(path)
                                 .Where(f => f.EndsWith(".mp3") || f.EndsWith(".m4a") || f.EndsWith(".webm"))
+                                .Select(f => new FileInfo(f))
+                                .OrderByDescending(fi => fi.LastWriteTime)
+                                .Select(fi => fi.FullName)
                                 .ToList();
 
             var songs = new List<Song>();

@@ -145,8 +145,8 @@ namespace MusicPlayer.Services
                 _progressTimer.Start();
 
                 // Update notification
-                _notificationService.UpdateMetadata(song.Title, song.Author, song.ThumbnailDataUrl ?? "");
-                _notificationService.UpdatePlaybackStatus(true);
+                _notificationService.UpdateMetadata(song.Title, song.Author, song.ThumbnailDataUrl ?? "", Duration);
+                _notificationService.UpdatePlaybackStatus(true, 0);
             }
             catch (Exception ex)
             {
@@ -192,14 +192,14 @@ namespace MusicPlayer.Services
                 _audioPlayer.Pause();
                 IsPlaying = false;
                 _progressTimer.Stop();
-                _notificationService.UpdatePlaybackStatus(false);
+                _notificationService.UpdatePlaybackStatus(false, _audioPlayer.CurrentPosition);
             }
             else
             {
                 _audioPlayer.Play();
                 IsPlaying = true;
                 _progressTimer.Start();
-                _notificationService.UpdatePlaybackStatus(true);
+                _notificationService.UpdatePlaybackStatus(true, _audioPlayer.CurrentPosition);
             }
 
             return Task.CompletedTask;
@@ -211,6 +211,7 @@ namespace MusicPlayer.Services
             {
                 _audioPlayer.Seek(seconds);
                 CurrentPosition = seconds;
+                _notificationService.UpdatePlaybackStatus(IsPlaying, seconds);
             }
         }
 
