@@ -26,28 +26,44 @@ namespace MusicPlayer.Components.Pages
                                 .Where(f => f.EndsWith(".mp3") || f.EndsWith(".m4a") || f.EndsWith(".webm"))
                                 .ToList();
 
-            downloadedSongs = files.Select(f => {
-                var fileName = Path.GetFileNameWithoutExtension(f);
-                var thumbPath = Path.Combine(path, fileName + ".jpg");
-                var song = new Song {
-                    Title = fileName,
-                    Author = "Unknown Artist",
-                    FilePath = f,
-                    ThumbnailPath = File.Exists(thumbPath) ? thumbPath : ""
-                };
-                
-                // Pre-calculate data URL safely to prevent UI rendering crashes
-                if (!string.IsNullOrEmpty(song.ThumbnailPath))
+            var songs = new List<Song>();
+
+            foreach (var f in files)
+            {
+                try
                 {
-                    try {
-                        byte[] bytes = File.ReadAllBytes(song.ThumbnailPath);
-                        song.ThumbnailDataUrl = $"data:image/jpeg;base64,{Convert.ToBase64String(bytes)}";
-                    } catch { /* Handle potential IO issues gracefully */ }
+                    using (var tfile = TagLib.File.Create(f))
+                    {
+                        var song = new Song
+                        {
+                            Title = !string.IsNullOrEmpty(tfile.Tag.Title) ? tfile.Tag.Title : Path.GetFileNameWithoutExtension(f),
+                            Author = tfile.Tag.FirstPerformer ?? tfile.Tag.FirstAlbumArtist ?? "Unknown Artist",
+                            FilePath = f
+                        };
+
+                        if (tfile.Tag.Pictures != null && tfile.Tag.Pictures.Length > 0)
+                        {
+                            var bin = tfile.Tag.Pictures[0].Data.Data;
+                            var mimeType = tfile.Tag.Pictures[0].MimeType ?? "image/jpeg";
+                            song.ThumbnailDataUrl = $"data:{mimeType};base64,{Convert.ToBase64String(bin)}";
+                        }
+
+                        songs.Add(song);
+                    }
                 }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error reading tags for {f}: {ex.Message}");
+                    songs.Add(new Song
+                    {
+                        Title = Path.GetFileNameWithoutExtension(f),
+                        Author = "Unknown Artist",
+                        FilePath = f
+                    });
+                }
+            }
 
-                return song;
-            }).ToList();
-
+            downloadedSongs = songs;
             PlayerService.Playlist = downloadedSongs;
         }
 
@@ -58,13 +74,6 @@ namespace MusicPlayer.Components.Pages
             if (File.Exists(song.FilePath))
             {
                 File.Delete(song.FilePath);
-                
-                // Also delete thumbnail if exists
-                if (!string.IsNullOrEmpty(song.ThumbnailPath) && File.Exists(song.ThumbnailPath))
-                {
-                    File.Delete(song.ThumbnailPath);
-                }
-
                 RefreshLibrary();
             }
         }

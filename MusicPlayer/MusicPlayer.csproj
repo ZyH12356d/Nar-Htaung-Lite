@@ -66,8 +66,10 @@
         <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Maui" Version="$(MauiVersion)" />
         <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />
         <PackageReference Include="Plugin.Maui.Audio" Version="4.0.0" />
-        <PackageReference Include="YoutubeExplode" Version="6.5.6" />
-        <PackageReference Include="YoutubeExplode.Converter" Version="6.5.6" />
+        <PackageReference Include="TagLibSharp" Version="2.3.0" />
+        <PackageReference Include="YoutubeExplode" Version="6.6.0" />
+        <PackageReference Include="YoutubeExplode.Converter" Version="6.6.0" />
+        <PackageReference Include="Xabe.FFmpeg.Downloader" Version="6.0.2" />
     </ItemGroup>
 
 </Project>

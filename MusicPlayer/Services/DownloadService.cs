@@ -1,20 +1,61 @@
 using MusicPlayer.Models;
 using System.Collections.ObjectModel;
+using YoutubeExplode.Common;
+using YoutubeExplode.Converter;
 using YoutubeExplode.Search;
+using YoutubeExplode.Videos.Streams;
 
 namespace MusicPlayer.Services
 {
     public class DownloadService
     {
         private readonly HttpClient _httpClient;
+        private readonly YoutubeExplode.YoutubeClient _youtube;
         private readonly SemaphoreSlim _semaphore = new(1, 1);
         private bool _isProcessing = false;
 
         public ObservableCollection<DownloadItem> Downloads { get; } = new();
 
-        public DownloadService(HttpClient httpClient)
+        private Task? _ffmpegInitializationTask;
+
+        public DownloadService(HttpClient httpClient, YoutubeExplode.YoutubeClient youtube)
         {
             _httpClient = httpClient;
+            _youtube = youtube;
+
+            // Ensure FFmpeg is available on Windows
+            if (DeviceInfo.Platform == DevicePlatform.WinUI)
+            {
+                _ffmpegInitializationTask = InitializeFfmpegAsync();
+            }
+        }
+
+        private async Task InitializeFfmpegAsync()
+        {
+            try
+            {
+                var ffmpegPath = Path.Combine(FileSystem.AppDataDirectory, "ffmpeg.exe");
+                Console.WriteLine($"Checking for FFmpeg at: {ffmpegPath}");
+                
+                if (!File.Exists(ffmpegPath))
+                {
+                    Console.WriteLine("FFmpeg not found, downloading...");
+                    // This will download ffmpeg.exe, ffprobe.exe etc to the AppDataDirectory
+                    await Xabe.FFmpeg.Downloader.FFmpegDownloader.GetLatestVersion(
+                        Xabe.FFmpeg.Downloader.FFmpegVersion.Official, 
+                        FileSystem.AppDataDirectory);
+                    Console.WriteLine("FFmpeg download completed.");
+                }
+                else
+                {
+                    Console.WriteLine("FFmpeg already exists.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"FFmpeg initialization failed: {ex.Message}");
+                throw; // Rethrow to let the waiter know it failed
+            }
         }
 
         public void Enqueue(VideoSearchResult video)
@@ -64,45 +105,107 @@ namespace MusicPlayer.Services
                 item.Status = DownloadStatus.Processing;
                 item.Progress = 0;
 
-                var baseUrl = DeviceInfo.Platform == DevicePlatform.Android ? "http://192.168.137.1:5181" : "http://localhost:5181";
-                var url = $"{baseUrl}/audio?id={item.VideoId}";
+                var sanitizedTitle = string.Join("_", item.Title.Split(Path.GetInvalidFileNameChars()));
 
-                using var response = await _httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
-                
-                if (!response.IsSuccessStatusCode)
+                // Progress reporter
+                var progressReporter = new Progress<double>(p =>
                 {
-                    item.Status = DownloadStatus.Failed;
-                    item.ErrorMessage = $"Server returned {response.StatusCode}";
-                    return;
+                    item.Progress = Math.Round(p * 100, 1);
+                    if (item.Progress > 0 && item.Status == DownloadStatus.Processing)
+                    {
+                        item.Status = DownloadStatus.Downloading;
+                    }
+                });
+
+                bool useConverter = DeviceInfo.Platform == DevicePlatform.WinUI;
+                string fileName = sanitizedTitle + (useConverter ? ".mp3" : ".m4a");
+                string filePath = Path.Combine(FileSystem.AppDataDirectory, fileName);
+
+                if (useConverter)
+                {
+                    // Windows: Use FFmpeg for MP3 conversion
+                    if (_ffmpegInitializationTask != null)
+                    {
+                        item.Status = DownloadStatus.Processing;
+                        item.ErrorMessage = "Initializing FFmpeg...";
+                        await _ffmpegInitializationTask;
+                    }
+
+                    var ffmpegPath = Path.Combine(FileSystem.AppDataDirectory, "ffmpeg.exe");
+                    if (!File.Exists(ffmpegPath))
+                    {
+                         throw new Exception($"FFmpeg not found at {ffmpegPath}. Please restart the app to retry downloading it.");
+                    }
+
+                    await _youtube.Videos.DownloadAsync(
+                        item.VideoId, 
+                        filePath, 
+                        o => o.SetContainer("mp3")
+                              .SetPreset(ConversionPreset.UltraFast)
+                              .SetFFmpegPath(ffmpegPath),
+                        progressReporter);
+                }
+                else
+                {
+                    // Android/iOS: Download M4A stream directly (no FFmpeg needed)
+                    var manifest = await _youtube.Videos.Streams.GetManifestAsync(item.VideoId);
+                    var streamInfo = manifest.GetAudioOnlyStreams()
+                        .Where(s => s.Container == YoutubeExplode.Videos.Streams.Container.Mp4)
+                        .GetWithHighestBitrate();
+                    
+                    if (streamInfo == null) 
+                        throw new Exception("No suitable M4A audio stream found for this video.");
+
+                    await _youtube.Videos.Streams.DownloadAsync(streamInfo, filePath, progressReporter);
                 }
 
-                item.Status = DownloadStatus.Downloading;
-                var totalBytes = response.Content.Headers.ContentLength;
+                item.Status = DownloadStatus.Processing; // Tagging phase
                 
-                using var contentStream = await response.Content.ReadAsStreamAsync();
-                var buffer = new byte[8192];
-                var totalRead = 0L;
-                int bytesRead;
+                // Get video metadata for tagging
+                var video = await _youtube.Videos.GetAsync(item.VideoId);
 
-                var sanitizedTitle = string.Join(" ", item.Title.Split(Path.GetInvalidFileNameChars()));
-                var fileName = $"{sanitizedTitle}.mp3";
-                var filePath = Path.Combine(FileSystem.AppDataDirectory, fileName);
-
-                using var fileStream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None, 8192, true);
-
-                while ((bytesRead = await contentStream.ReadAsync(buffer)) != 0)
+                // Download thumbnail for cover art
+                byte[]? thumbBytes = null;
+                var thumb = video.Thumbnails.GetWithHighestResolution();
+                if (thumb != null)
                 {
-                    await fileStream.WriteAsync(buffer.AsMemory(0, bytesRead));
-                    totalRead += bytesRead;
-
-                    if (totalBytes.HasValue)
+                    try
                     {
-                        item.Progress = Math.Round((double)totalRead / totalBytes.Value * 100, 1);
+                        thumbBytes = await _httpClient.GetByteArrayAsync(thumb.Url);
                     }
+                    catch { /* Ignore thumbnail download errors */ }
+                }
+
+                // Tagging with TagLibSharp
+                using (var tfile = TagLib.File.Create(filePath))
+                {
+                    tfile.Tag.Title = video.Title;
+                    tfile.Tag.Performers = new[] { video.Author.ChannelTitle };
+                    tfile.Tag.AlbumArtists = new[] { video.Author.ChannelTitle };
+                    tfile.Tag.Album = video.Author.ChannelTitle;
+
+                    if (thumbBytes != null)
+                    {
+                        var picture = new TagLib.Picture(new TagLib.ByteVector(thumbBytes))
+                        {
+                            Type = TagLib.PictureType.FrontCover,
+                            Description = "Cover",
+                            MimeType = "image/jpeg"
+                        };
+                        tfile.Tag.Pictures = new TagLib.IPicture[] { picture };
+                    }
+
+                    tfile.Save();
                 }
 
                 item.Status = DownloadStatus.Completed;
                 item.Progress = 100;
+            }
+            catch (YoutubeExplode.Exceptions.VideoUnavailableException vex)
+            {
+                item.Status = DownloadStatus.Failed;
+                item.ErrorMessage = "YouTube is blocking the request (Bot Detection). Try again later or use a different video.";
+                Console.WriteLine($"Bot Detection: {vex.Message}");
             }
             catch (Exception ex)
             {

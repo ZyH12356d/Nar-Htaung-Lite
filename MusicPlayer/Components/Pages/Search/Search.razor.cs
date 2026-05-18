@@ -15,10 +15,12 @@ namespace MusicPlayer.Components.Pages.Search
         [Microsoft.AspNetCore.Components.Inject]
         public MusicPlayer.Services.DownloadService DownloadService { get; set; } = default!;
 
+        [Microsoft.AspNetCore.Components.Inject]
+        public YoutubeClient Youtube { get; set; } = default!;
+
         private string searchQuery = "";
         private bool isSearching = false;
         private List<VideoSearchResult> results = new();
-        private YoutubeClient youtube = new();
 
         private async Task HandleSearch()
         {
@@ -29,7 +31,7 @@ namespace MusicPlayer.Components.Pages.Search
 
             try
             {
-                var searchResults = await youtube.Search.GetVideosAsync(searchQuery).CollectAsync(20);
+                var searchResults = await Youtube.Search.GetVideosAsync(searchQuery).CollectAsync(20);
                 results = searchResults.ToList();
             }
             catch (Exception ex)
