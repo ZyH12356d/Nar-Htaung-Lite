@@ -11,6 +11,7 @@ namespace MusicPlayer.Services
     public class PlayerService : INotifyPropertyChanged, IDisposable
     {
         private readonly IAudioManager _audioManager;
+        private readonly IMediaNotificationService _notificationService;
         private IAudioPlayer? _audioPlayer;
         private List<Song> _playlist = new();
         private Song? _currentSong;
@@ -23,9 +24,10 @@ namespace MusicPlayer.Services
         private System.Timers.Timer _progressTimer;
         private Random _rng = new Random();
 
-        public PlayerService(IAudioManager audioManager)
+        public PlayerService(IAudioManager audioManager, IMediaNotificationService notificationService)
         {
             _audioManager = audioManager;
+            _notificationService = notificationService;
             _progressTimer = new Timer(500); // More frequent updates for smoother UI
             _progressTimer.AutoReset = true;
             _progressTimer.Elapsed += (s, e) => UpdateProgress();
@@ -141,6 +143,10 @@ namespace MusicPlayer.Services
                 _audioPlayer.Play();
                 IsPlaying = true;
                 _progressTimer.Start();
+
+                // Update notification
+                _notificationService.UpdateMetadata(song.Title, song.Author, song.ThumbnailDataUrl ?? "");
+                _notificationService.UpdatePlaybackStatus(true);
             }
             catch (Exception ex)
             {
@@ -186,12 +192,14 @@ namespace MusicPlayer.Services
                 _audioPlayer.Pause();
                 IsPlaying = false;
                 _progressTimer.Stop();
+                _notificationService.UpdatePlaybackStatus(false);
             }
             else
             {
                 _audioPlayer.Play();
                 IsPlaying = true;
                 _progressTimer.Start();
+                _notificationService.UpdatePlaybackStatus(true);
             }
 
             return Task.CompletedTask;

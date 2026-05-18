@@ -33,6 +33,16 @@ namespace MusicPlayer
             });
             builder.Services.AddSingleton<MusicPlayer.Services.PlayerService>();
             builder.Services.AddSingleton<MusicPlayer.Services.DownloadService>();
+            builder.Services.AddSingleton<MusicPlayer.Services.NavigationService>();
+            
+#if ANDROID
+            builder.Services.AddSingleton<MusicPlayer.Services.IMediaNotificationService, MusicPlayer.Platforms.Android.MediaNotificationService>();
+#else
+            builder.Services.AddSingleton<MusicPlayer.Services.IMediaNotificationService, MusicPlayer.Services.StubMediaNotificationService>();
+#endif
+
+            builder.Services.AddSingleton<App>();
+            builder.Services.AddSingleton<MainPage>();
             builder.Services.AddSingleton(Plugin.Maui.Audio.AudioManager.Current);
 
             return builder.Build();

@@ -5,7 +5,14 @@
 <PageTitle>Nar Htaung Lite - Dashboard</PageTitle>
 
 <div class="container pb-5">
-    <h1 class="mt-3 mb-4">Dashboard</h1>
+    <div class="d-flex justify-content-between align-items-center mt-3 mb-4">
+        <h1 class="mb-0">Nar Htaung Lite</h1>
+        <button class="btn btn-link p-0 text-decoration-none" @onclick="ToggleDarkMode">
+            <span class="material-symbols-outlined" style="font-size: 1.8rem; color: var(--text-default);">
+                @(isDarkMode ? "light_mode" : "dark_mode")
+            </span>
+        </button>
+    </div>
 
     @if (downloadedSongs == null || !downloadedSongs.Any())
     {
@@ -44,6 +51,26 @@
 </div>
 
 @code {
+    [Inject] private IJSRuntime JSRuntime { get; set; } = default!;
+    private bool isDarkMode;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var theme = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "theme");
+            isDarkMode = theme == "dark";
+            StateHasChanged();
+        }
+    }
+
+    private async Task ToggleDarkMode()
+    {
+        isDarkMode = !isDarkMode;
+        var theme = isDarkMode ? "dark" : "light";
+        await JSRuntime.InvokeVoidAsync("setTheme", theme);
+    }
+
     private void PlayAndExpand(Song song)
     {
         _ = PlayerService.PlaySong(song);

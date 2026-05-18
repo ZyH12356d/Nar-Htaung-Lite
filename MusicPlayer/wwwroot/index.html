@@ -24,6 +24,18 @@
         <span class="dismiss">🗙</span>
     </div>
 
+    <script>
+        function setTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem('theme', theme);
+        }
+
+        // Apply theme immediately search
+        (function () {
+            const theme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
     <script src="_framework/blazor.webview.js" autostart="false"></script>
 
 </body>

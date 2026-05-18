@@ -8,15 +8,6 @@
     transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-.theme-toggle-btn {
-    position: fixed;
-    top: env(safe-area-inset-top, 0); 
-    right: 1.5rem;
-    z-index: 1000;
-    cursor: pointer;
-    background: transparent;
-    margin-top: 0.75rem; /* Reduced margin */
-}
 
 .main-content {
     flex: 1;

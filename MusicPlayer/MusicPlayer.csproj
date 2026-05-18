@@ -72,4 +72,8 @@
         <PackageReference Include="Xabe.FFmpeg.Downloader" Version="6.0.2" />
     </ItemGroup>
 
+    <ItemGroup Condition="$(TargetFramework.Contains('-android'))">
+        <PackageReference Include="Xamarin.AndroidX.Media" Version="1.6.0.9" />
+    </ItemGroup>
+
 </Project>

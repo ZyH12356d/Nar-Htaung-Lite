@@ -1,17 +1,6 @@
 @inherits LayoutComponentBase
 
-<div class="app-layout" data-theme="@_theme">
-    <div class="theme-toggle-btn" @onclick="ToggleTheme">
-        @if (_theme == "light")
-        {
-            <span style="font-size: 1.5rem;">🌙</span>
-        }
-        else
-        {
-            <span style="font-size: 1.5rem;">☀️</span>
-        }
-    </div>
-
+<div class="app-layout">
     <main class="main-content">
         @Body
     </main>
@@ -24,14 +13,33 @@
     <PlayerOverlay />
 </div>
 
+@implements IDisposable
+
 @code {
-    private string _theme = "dark";
-
     [Inject] private Services.PlayerService PlayerService { get; set; } = default!;
+    [Inject] private Services.NavigationService NavigationService { get; set; } = default!;
+    [Inject] private NavigationManager NavigationManager { get; set; } = default!;
 
-    private void ToggleTheme()
+    protected override void OnInitialized()
     {
-        _theme = _theme == "light" ? "dark" : "light";
-        StateHasChanged();
+        NavigationManager.LocationChanged += OnLocationChanged;
+        NavigationService.NavigateToHomeRequested += OnNavigateToHomeRequested;
+        NavigationService.CurrentPage = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        NavigationService.CurrentPage = NavigationManager.ToBaseRelativePath(e.Location);
+    }
+
+    private void OnNavigateToHomeRequested()
+    {
+        NavigationManager.NavigateTo("/", false);
+    }
+
+    public void Dispose()
+    {
+        NavigationManager.LocationChanged -= OnLocationChanged;
+        NavigationService.NavigateToHomeRequested -= OnNavigateToHomeRequested;
     }
 }
