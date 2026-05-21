@@ -23,6 +23,7 @@ namespace MusicPlayer.Services
         private double _duration;
         private System.Timers.Timer _progressTimer;
         private Random _rng = new Random();
+        private bool _isPositionRestored = false;
 
         public PlayerService(IAudioManager audioManager, IMediaNotificationService notificationService)
         {
@@ -66,6 +67,16 @@ namespace MusicPlayer.Services
                 if (_currentSong != null)
                 {
                     Preferences.Set("LastSongPath", _currentSong.FilePath);
+                    
+                    // If we are restoring the song on startup, load the stored position
+                    if (!_isPositionRestored)
+                    {
+                        var lastPath = Preferences.Get("LastSongPath", string.Empty);
+                        if (_currentSong.FilePath == lastPath)
+                        {
+                            CurrentPosition = Preferences.Get("LastSongPosition", 0.0);
+                        }
+                    }
                 }
             }
         }
@@ -140,13 +151,36 @@ namespace MusicPlayer.Services
                 _audioPlayer.PlaybackEnded += OnPlaybackEnded;
 
                 Duration = _audioPlayer.Duration;
+
+                // If it is the startup restored song, seek to the saved position
+                if (!_isPositionRestored)
+                {
+                    var lastPath = Preferences.Get("LastSongPath", string.Empty);
+                    if (song.FilePath == lastPath)
+                    {
+                        var savedPosition = Preferences.Get("LastSongPosition", 0.0);
+                        if (savedPosition > 0 && savedPosition < Duration)
+                        {
+                            _audioPlayer.Seek(savedPosition);
+                            CurrentPosition = savedPosition;
+                        }
+                    }
+                    _isPositionRestored = true;
+                }
+                else
+                {
+                    // For a normal new song play, start from 0 and clear saved position
+                    CurrentPosition = 0;
+                    Preferences.Set("LastSongPosition", 0.0);
+                }
+
                 _audioPlayer.Play();
                 IsPlaying = true;
                 _progressTimer.Start();
 
                 // Update notification
                 _notificationService.UpdateMetadata(song.Title, song.Author, song.ThumbnailDataUrl ?? "", Duration);
-                _notificationService.UpdatePlaybackStatus(true, 0);
+                _notificationService.UpdatePlaybackStatus(true, CurrentPosition);
             }
             catch (Exception ex)
             {
@@ -166,6 +200,9 @@ namespace MusicPlayer.Services
                 {
                     _currentPosition = newPos;
                     OnPropertyChanged(nameof(CurrentPosition));
+
+                    // Save position to preferences so we can restore it if killed
+                    Preferences.Set("LastSongPosition", _currentPosition);
                 }
             }
         }
@@ -245,6 +282,8 @@ namespace MusicPlayer.Services
 
         public async Task HandleTrackEnded()
         {
+            Preferences.Set("LastSongPosition", 0.0);
+            
             if (IsRepeat)
             {
                 if (CurrentSong != null) await PlaySong(CurrentSong);

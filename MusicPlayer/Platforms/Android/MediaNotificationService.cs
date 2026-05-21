@@ -33,7 +33,7 @@ namespace MusicPlayer.Platforms.Android
 
         public void UpdateMetadata(string title, string author, string thumbnailUrl, double durationSeconds)
         {
-            var context = Platform.CurrentActivity;
+            var context = Platform.AppContext;
 
             var metadataBuilder = new MediaMetadata.Builder()
                 .PutString(MediaMetadata.MetadataKeyTitle, title)
@@ -52,7 +52,9 @@ namespace MusicPlayer.Platforms.Android
                     .SetMediaSession(global::Android.Support.V4.Media.Session.MediaSessionCompat.Token.FromToken(_mediaSession.SessionToken)))
                 .SetContentIntent(PendingIntent.GetActivity(context, 0, new Intent(context, typeof(MainActivity)), PendingIntentFlags.Immutable));
 
-            _notificationManager.Notify(NotificationId, notificationBuilder.Build());
+            var notification = notificationBuilder.Build();
+            PlaybackService.CurrentNotification = notification;
+            _notificationManager.Notify(NotificationId, notification);
         }
 
         public void UpdatePlaybackStatus(bool isPlaying, double positionSeconds)
@@ -63,6 +65,28 @@ namespace MusicPlayer.Platforms.Android
             _mediaSession.SetPlaybackState(new PlaybackState.Builder()
                 .SetState(state, (long)(positionSeconds * 1000), speed)
                 .Build());
+
+            var context = Platform.AppContext;
+            var intent = new Intent(context, typeof(PlaybackService));
+
+            if (isPlaying)
+            {
+                if (PlaybackService.CurrentNotification != null)
+                {
+                    if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
+                    {
+                        context.StartForegroundService(intent);
+                    }
+                    else
+                    {
+                        context.StartService(intent);
+                    }
+                }
+            }
+            else
+            {
+                context.StopService(intent);
+            }
         }
     }
 }

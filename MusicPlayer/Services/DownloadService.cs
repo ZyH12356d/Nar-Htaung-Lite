@@ -106,6 +106,12 @@ namespace MusicPlayer.Services
                 item.Progress = 0;
 
                 var sanitizedTitle = string.Join("_", item.Title.Split(Path.GetInvalidFileNameChars()));
+                
+                // Truncate to prevent IO Path TooLong on Android (max 60 characters)
+                if (sanitizedTitle.Length > 60)
+                {
+                    sanitizedTitle = sanitizedTitle.Substring(0, 60).TrimEnd('_');
+                }
 
                 // Progress reporter
                 var progressReporter = new Progress<double>(p =>
@@ -137,13 +143,28 @@ namespace MusicPlayer.Services
                          throw new Exception($"FFmpeg not found at {ffmpegPath}. Please restart the app to retry downloading it.");
                     }
 
-                    await _youtube.Videos.DownloadAsync(
-                        item.VideoId, 
-                        filePath, 
-                        o => o.SetContainer("mp3")
-                              .SetPreset(ConversionPreset.UltraFast)
-                              .SetFFmpegPath(ffmpegPath),
-                        progressReporter);
+                    int maxRetries = 3;
+                    int delayMs = 2000;
+                    for (int i = 0; i < maxRetries; i++)
+                    {
+                        try
+                        {
+                            await _youtube.Videos.DownloadAsync(
+                                item.VideoId, 
+                                filePath, 
+                                o => o.SetContainer("mp3")
+                                      .SetPreset(ConversionPreset.UltraFast)
+                                      .SetFFmpegPath(ffmpegPath),
+                                progressReporter);
+                            break; // Success
+                        }
+                        catch (Exception ex) when (i < maxRetries - 1)
+                        {
+                            Console.WriteLine($"Windows download attempt {i + 1} failed, retrying in {delayMs}ms... Error: {ex.Message}");
+                            await Task.Delay(delayMs);
+                            delayMs *= 2;
+                        }
+                    }
                 }
                 else
                 {
@@ -156,7 +177,22 @@ namespace MusicPlayer.Services
                     if (streamInfo == null) 
                         throw new Exception("No suitable M4A audio stream found for this video.");
 
-                    await _youtube.Videos.Streams.DownloadAsync(streamInfo, filePath, progressReporter);
+                    int maxRetries = 3;
+                    int delayMs = 2000;
+                    for (int i = 0; i < maxRetries; i++)
+                    {
+                        try
+                        {
+                            await _youtube.Videos.Streams.DownloadAsync(streamInfo, filePath, progressReporter);
+                            break; // Success
+                        }
+                        catch (Exception ex) when (i < maxRetries - 1)
+                        {
+                            Console.WriteLine($"Android/iOS download attempt {i + 1} failed, retrying in {delayMs}ms... Error: {ex.Message}");
+                            await Task.Delay(delayMs);
+                            delayMs *= 2;
+                        }
+                    }
                 }
 
                 item.Status = DownloadStatus.Processing; // Tagging phase
