@@ -1,3 +1,6 @@
+@inject MusicPlayer.Services.DownloadService DownloadService
+@implements IDisposable
+
 <nav class="bottom-nav">
     <NavLink class="nav-item" href="" Match="NavLinkMatch.All">
         <span class="material-symbols-outlined nav-icon">home</span>
@@ -11,8 +14,35 @@
         <span class="material-symbols-outlined nav-icon">album</span>
         <span class="nav-label">Album</span>
     </NavLink>
-    <NavLink class="nav-item" href="downloads" Match="NavLinkMatch.All">
-        <span class="material-symbols-outlined nav-icon">download</span>
+    <NavLink class="nav-item nav-item--downloads" href="downloads" Match="NavLinkMatch.All">
+        <span class="nav-icon-wrapper">
+            <span class="material-symbols-outlined nav-icon">download</span>
+            @if (_activeCount > 0)
+            {
+                <span class="download-badge">@_activeCount</span>
+            }
+        </span>
         <span class="nav-label">Downloads</span>
     </NavLink>
 </nav>
+
+@code {
+    private int _activeCount;
+
+    protected override void OnInitialized()
+    {
+        _activeCount = DownloadService.ActiveDownloadCount;
+        DownloadService.DownloadsChanged += OnDownloadsChanged;
+    }
+
+    private void OnDownloadsChanged()
+    {
+        _activeCount = DownloadService.ActiveDownloadCount;
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        DownloadService.DownloadsChanged -= OnDownloadsChanged;
+    }
+}

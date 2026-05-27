@@ -147,6 +147,7 @@ h1:focus {
     left: 0;
     width: 100%;
     height: 64px;
+    overflow: hidden; /* Prevent long titles from expanding the bar */
     background-color: var(--bg-surface);
     border-top: 1px solid var(--border-color);
     display: flex;

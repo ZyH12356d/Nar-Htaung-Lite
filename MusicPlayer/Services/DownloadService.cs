@@ -16,6 +16,15 @@ namespace MusicPlayer.Services
 
         public ObservableCollection<DownloadItem> Downloads { get; } = new();
 
+        /// <summary>Number of songs currently waiting, processing, or downloading.</summary>
+        public int ActiveDownloadCount =>
+            Downloads.Count(d => d.Status == DownloadStatus.Waiting ||
+                                 d.Status == DownloadStatus.Processing ||
+                                 d.Status == DownloadStatus.Downloading);
+
+        /// <summary>Fires whenever a download is enqueued, completes, or fails.</summary>
+        public event Action? DownloadsChanged;
+
         private Task? _ffmpegInitializationTask;
 
         public DownloadService(HttpClient httpClient, YoutubeExplode.YoutubeClient youtube)
@@ -71,6 +80,7 @@ namespace MusicPlayer.Services
             };
 
             Downloads.Insert(0, item); // Show newest at top
+            DownloadsChanged?.Invoke();
             
             _ = Task.Run(() => ProcessQueueAsync());
         }
@@ -251,6 +261,7 @@ namespace MusicPlayer.Services
             finally
             {
                 _semaphore.Release();
+                DownloadsChanged?.Invoke(); // Notify badge when a download finishes or fails
             }
         }
 

@@ -2,11 +2,13 @@
 @using YoutubeExplode
 @using YoutubeExplode.Common
 @using YoutubeExplode.Search
+
 <div class="container pb-5" style="padding-top: 2rem;">
 <h3>YouTube Search</h3>
 
 <div class="input-group mb-3">
-    <input type="text" class="form-control" placeholder="Song name..." @bind="searchQuery" />
+    <input type="text" class="form-control" placeholder="Song name..." @bind="searchQuery"
+           @onkeydown="@(async e => { if (e.Key == "Enter") await HandleSearch(); })" />
     <button class="btn btn-primary" @onclick="HandleSearch">Search</button>
 </div>
 
@@ -22,10 +24,10 @@
         {
             <div class="list-group-item d-flex align-items-center">
                 <img src="@video.Thumbnails.OrderByDescending(t => t.Resolution.Width).FirstOrDefault()?.Url"
-                     style="width: 120px; border-radius: 8px; margin-right: 15px;" />
-                <div>
-                    <h5>@video.Title</h5>
-                    <p class="text-muted">@video.Author.ChannelTitle</p>
+                     style="width: 120px; border-radius: 8px; margin-right: 15px; flex-shrink: 0;" />
+                <div style="min-width: 0;">
+                    <h5 class="text-truncate mb-1">@video.Title</h5>
+                    <p class="text-muted text-truncate mb-2">@video.Author.ChannelTitle</p>
                     <button class="btn btn-sm btn-success" @onclick="() => DownloadAudio(video)">
                         Download
                     </button>
@@ -33,5 +35,27 @@
             </div>
         }
     </div>
+
+    @* Load More / cursor pagination *@
+    @if (hasMore)
+    {
+        <div class="d-flex justify-content-center mt-4 mb-3">
+            <button class="btn btn-outline-secondary px-4" @onclick="LoadMore" disabled="@isLoadingMore">
+                @if (isLoadingMore)
+                {
+                    <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                    <span>Loading...</span>
+                }
+                else
+                {
+                    <span>Load More</span>
+                }
+            </button>
+        </div>
+    }
+    else if (!isSearching)
+    {
+        <p class="text-center text-muted mt-3" style="font-size: 0.85rem;">No more results</p>
+    }
 }
 </div>
