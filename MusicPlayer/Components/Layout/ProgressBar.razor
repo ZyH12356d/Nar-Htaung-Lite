@@ -1,0 +1,64 @@
+@using MusicPlayer.Services
+@inject PlayerService PlayerService
+@implements IDisposable
+
+<div class="seek-container w-100 px-2 mb-4">
+    <input type="range" class="form-range custom-range" 
+           min="0" max="@PlayerService.Duration" step="1"
+           value="@(IsDragging ? DragPosition : PlayerService.CurrentPosition)" 
+           @oninput="OnDrag" @onchange="OnSeekEnd" />
+    <div class="d-flex justify-content-between mt-1">
+        <span class="time-label">@FormatTime(IsDragging ? DragPosition : PlayerService.CurrentPosition)</span>
+        <span class="time-label">@FormatTime(PlayerService.Duration)</span>
+    </div>
+</div>
+
+@code {
+    private bool IsDragging { get; set; }
+    private double DragPosition { get; set; }
+
+    protected override void OnInitialized()
+    {
+        PlayerService.PropertyChanged += HandlePropertyChanged;
+    }
+
+    private void HandlePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(PlayerService.CurrentPosition))
+        {
+            if (!IsDragging)
+            {
+                InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    private void OnDrag(ChangeEventArgs e)
+    {
+        IsDragging = true;
+        if (double.TryParse(e.Value?.ToString(), out var pos))
+        {
+            DragPosition = pos;
+        }
+    }
+
+    private void OnSeekEnd(ChangeEventArgs e)
+    {
+        if (double.TryParse(e.Value?.ToString(), out var pos))
+        {
+            PlayerService.Seek(pos);
+        }
+        IsDragging = false;
+    }
+
+    private string FormatTime(double seconds)
+    {
+        var time = TimeSpan.FromSeconds(seconds);
+        return $"{(int)time.TotalMinutes}:{time.Seconds:D2}";
+    }
+
+    public void Dispose()
+    {
+        PlayerService.PropertyChanged -= HandlePropertyChanged;
+    }
+}

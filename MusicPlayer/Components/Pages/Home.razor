@@ -14,7 +14,7 @@
         </button>
     </div>
 
-    @if (downloadedSongs == null || !downloadedSongs.Any())
+    @if (LibraryService.Songs == null || !LibraryService.Songs.Any())
     {
         <div class="alert alert-info border-0 shadow-sm" style="background-color: var(--bg-surface); color: var(--text-default);">
             <p class="mb-0">No music found. Go to the Search page to download some tracks!</p>
@@ -23,9 +23,13 @@
     else
     {
         <div class="list-group">
-            @foreach (var song in downloadedSongs)
+            @foreach (var song in LibraryService.Songs)
             {
-                <div class="list-group-item d-flex justify-content-between align-items-center @(PlayerService.CurrentSong?.FilePath == song.FilePath ? "bg-info text-white" : "")">
+                <div class="list-group-item d-flex justify-content-between align-items-center @(PlayerService.CurrentSong?.FilePath == song.FilePath ? "bg-info text-white" : "")"
+                     @onpointerdown="() => HandlePointerDown(song)"
+                     @onpointerup="HandlePointerUpOrLeave"
+                     @onpointerleave="HandlePointerUpOrLeave"
+                     @oncontextmenu:preventDefault="true">
                     <div class="d-flex align-items-center" style="cursor:pointer;" @onclick="() => PlayAndExpand(song)">
                         @if (!string.IsNullOrEmpty(song.ThumbnailDataUrl))
                         {
@@ -43,15 +47,31 @@
                             <small class="text-muted @(PlayerService.CurrentSong?.FilePath == song.FilePath ? "text-white-50" : "")">@song.Author</small>
                         </div>
                     </div>
-                    @* <button class="btn btn-danger btn-sm" @onclick="() => DeleteSong(song)">Delete</button> *@
                 </div>
             }
         </div>
     }
 </div>
 
+@* Delete Confirmation Modal *@
+@if (_showDeleteModal)
+{
+    <div class="delete-modal-backdrop" @onclick="CancelDelete">
+        <div class="delete-modal" @onclick:stopPropagation="true">
+            <div class="delete-modal-icon">
+                <span class="material-symbols-outlined" style="font-size: 2.5rem; color: #e74c3c;">delete</span>
+            </div>
+            <h5 class="delete-modal-title">Nar Htaung Lite</h5>
+            <p class="delete-modal-message">Are you sure you want to delete <strong>@_songToDelete?.Title</strong>?</p>
+            <div class="delete-modal-actions">
+                <button class="delete-modal-btn delete-modal-btn-cancel" @onclick="CancelDelete">Cancel</button>
+                <button class="delete-modal-btn delete-modal-btn-confirm" @onclick="ConfirmDelete">Delete</button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
-    [Inject] private IJSRuntime JSRuntime { get; set; } = default!;
     private bool isDarkMode;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -70,14 +90,88 @@
         var theme = isDarkMode ? "dark" : "light";
         await JSRuntime.InvokeVoidAsync("setTheme", theme);
     }
-
-    private void PlayAndExpand(Song song)
-    {
-        _ = PlayerService.PlaySong(song);
-        PlayerService.IsPlayerExpanded = true;
-    }
 }
 
 <style>
     .extra-small { font-size: 0.7rem; }
+
+    .delete-modal-backdrop {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.55);
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        animation: fadeIn 0.15s ease;
+    }
+
+    .delete-modal {
+        background: var(--bg-surface, #fff);
+        color: var(--text-default, #222);
+        border-radius: 16px;
+        padding: 1.8rem 1.5rem 1.2rem;
+        width: 85%;
+        max-width: 320px;
+        text-align: center;
+        box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+        animation: scaleIn 0.2s ease;
+    }
+
+    .delete-modal-icon {
+        margin-bottom: 0.5rem;
+    }
+
+    .delete-modal-title {
+        font-weight: 700;
+        font-size: 1.1rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .delete-modal-message {
+        font-size: 0.9rem;
+        color: var(--text-muted, #666);
+        margin-bottom: 1.5rem;
+        line-height: 1.4;
+    }
+
+    .delete-modal-actions {
+        display: flex;
+        gap: 0.75rem;
+    }
+
+    .delete-modal-btn {
+        flex: 1;
+        padding: 0.6rem 1rem;
+        border-radius: 10px;
+        border: none;
+        font-weight: 600;
+        font-size: 0.9rem;
+        cursor: pointer;
+        transition: opacity 0.15s;
+    }
+
+    .delete-modal-btn:active {
+        opacity: 0.7;
+    }
+
+    .delete-modal-btn-cancel {
+        background: var(--border-color, #e0e0e0);
+        color: var(--text-default, #333);
+    }
+
+    .delete-modal-btn-confirm {
+        background: #e74c3c;
+        color: #fff;
+    }
+
+    @@keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+
+    @@keyframes scaleIn {
+        from { transform: scale(0.9); opacity: 0; }
+        to { transform: scale(1); opacity: 1; }
+    }
 </style>

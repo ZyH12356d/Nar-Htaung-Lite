@@ -34,6 +34,7 @@ namespace MusicPlayer
             builder.Services.AddSingleton<MusicPlayer.Services.PlayerService>();
             builder.Services.AddSingleton<MusicPlayer.Services.DownloadService>();
             builder.Services.AddSingleton<MusicPlayer.Services.NavigationService>();
+            builder.Services.AddSingleton<MusicPlayer.Services.LibraryService>();
             
 #if ANDROID
             builder.Services.AddSingleton<MusicPlayer.Services.IMediaNotificationService, MusicPlayer.Platforms.Android.MediaNotificationService>();

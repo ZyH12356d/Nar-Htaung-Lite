@@ -11,6 +11,7 @@ namespace MusicPlayer.Services
     {
         private readonly HttpClient _httpClient;
         private readonly YoutubeExplode.YoutubeClient _youtube;
+        private readonly LibraryService _libraryService;
         private readonly SemaphoreSlim _semaphore = new(1, 1);
         private bool _isProcessing = false;
 
@@ -27,10 +28,11 @@ namespace MusicPlayer.Services
 
         private Task? _ffmpegInitializationTask;
 
-        public DownloadService(HttpClient httpClient, YoutubeExplode.YoutubeClient youtube)
+        public DownloadService(HttpClient httpClient, YoutubeExplode.YoutubeClient youtube, LibraryService libraryService)
         {
             _httpClient = httpClient;
             _youtube = youtube;
+            _libraryService = libraryService;
 
             // Ensure FFmpeg is available on Windows
             if (DeviceInfo.Platform == DevicePlatform.WinUI)
@@ -243,6 +245,20 @@ namespace MusicPlayer.Services
 
                     tfile.Save();
                 }
+
+                var newSong = new Song
+                {
+                    Title = video.Title,
+                    Author = video.Author.ChannelTitle,
+                    FilePath = filePath
+                };
+
+                if (thumbBytes != null)
+                {
+                    newSong.ThumbnailDataUrl = $"data:image/jpeg;base64,{Convert.ToBase64String(thumbBytes)}";
+                }
+
+                await _libraryService.AddSongAsync(newSong);
 
                 item.Status = DownloadStatus.Completed;
                 item.Progress = 100;

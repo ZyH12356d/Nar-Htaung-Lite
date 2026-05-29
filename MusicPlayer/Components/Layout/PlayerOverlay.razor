@@ -74,16 +74,7 @@
             </div>
 
             @* Progress/Seek Bar - Stylized *@
-            <div class="seek-container w-100 px-2 mb-4">
-                <input type="range" class="form-range custom-range" 
-                       min="0" max="@PlayerService.Duration" step="1"
-                       value="@(IsDragging ? DragPosition : PlayerService.CurrentPosition)" 
-                       @oninput="OnDrag" @onchange="OnSeekEnd" />
-                <div class="d-flex justify-content-between mt-1">
-                    <span class="time-label">@FormatTime(IsDragging ? DragPosition : PlayerService.CurrentPosition)</span>
-                    <span class="time-label">@FormatTime(PlayerService.Duration)</span>
-                </div>
-            </div>
+            <ProgressBar />
 
             <div class="playback-controls">
                 <button class="ctrl-btn @(PlayerService.IsShuffle ? "active" : "")" @onclick="() => PlayerService.IsShuffle = !PlayerService.IsShuffle">
@@ -118,9 +109,6 @@
 }
 
 @code {
-    private bool IsDragging { get; set; }
-    private double DragPosition { get; set; }
-
     protected override void OnInitialized()
     {
         PlayerService.PropertyChanged += HandlePropertyChanged;
@@ -128,8 +116,9 @@
 
     private void HandlePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        // Don't update if we are dragging and the position changed in the background
-        if (IsDragging && e.PropertyName == nameof(PlayerService.CurrentPosition))
+        // Ignore CurrentPosition changes so we don't re-render the whole overlay twice a second.
+        // ProgressBar.razor handles its own CurrentPosition updates.
+        if (e.PropertyName == nameof(PlayerService.CurrentPosition))
             return;
 
         InvokeAsync(StateHasChanged);
@@ -137,30 +126,6 @@
 
     private void ExpandPlayer() => PlayerService.IsPlayerExpanded = true;
     private void CollapsePlayer() => PlayerService.IsPlayerExpanded = false;
-
-    private void OnDrag(ChangeEventArgs e)
-    {
-        IsDragging = true;
-        if (double.TryParse(e.Value?.ToString(), out var pos))
-        {
-            DragPosition = pos;
-        }
-    }
-
-    private void OnSeekEnd(ChangeEventArgs e)
-    {
-        if (double.TryParse(e.Value?.ToString(), out var pos))
-        {
-            PlayerService.Seek(pos);
-        }
-        IsDragging = false;
-    }
-
-    private string FormatTime(double seconds)
-    {
-        var time = TimeSpan.FromSeconds(seconds);
-        return $"{(int)time.TotalMinutes}:{time.Seconds:D2}";
-    }
 
     public void Dispose()
     {

@@ -1,23 +1,41 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading.Tasks;
 using MusicPlayer.Services;
 using MusicPlayer.Models;
 using Microsoft.AspNetCore.Components;
+using Microsoft.JSInterop;
 
 namespace MusicPlayer.Components.Pages
 {
     partial class Home : IDisposable
     {
         [Inject] private PlayerService PlayerService { get; set; } = default!;
+        [Inject] private LibraryService LibraryService { get; set; } = default!;
         [Inject] private NavigationManager NavigationManager { get; set; } = default!;
+        [Inject] private IJSRuntime JSRuntime { get; set; } = default!;
 
-        private List<Song> downloadedSongs = new();
+        private System.Timers.Timer? _pressTimer;
+        private bool _longPressTriggered;
 
-        protected override void OnInitialized()
+        // Delete confirmation modal state
+        private bool _showDeleteModal;
+        private Song? _songToDelete;
+
+        protected override async Task OnInitializedAsync()
         {
-            RefreshLibrary();
+            LibraryService.LibraryUpdated += OnLibraryUpdated;
             PlayerService.PropertyChanged += OnPlayerServicePropertyChanged;
+            
+            await LibraryService.LoadLibraryAsync();
+            PlayerService.Playlist = LibraryService.Songs.ToList();
+        }
+
+        private void OnLibraryUpdated()
+        {
+            PlayerService.Playlist = LibraryService.Songs.ToList();
+            _ = InvokeAsync(StateHasChanged);
         }
 
         private void OnPlayerServicePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -30,69 +48,67 @@ namespace MusicPlayer.Components.Pages
 
         public void Dispose()
         {
+            LibraryService.LibraryUpdated -= OnLibraryUpdated;
             PlayerService.PropertyChanged -= OnPlayerServicePropertyChanged;
+            _pressTimer?.Dispose();
         }
 
-        private void RefreshLibrary()
+        private void HandlePointerDown(Song song)
         {
-            var path = FileSystem.AppDataDirectory;
-            var files = Directory.EnumerateFiles(path)
-                                .Where(f => f.EndsWith(".mp3") || f.EndsWith(".m4a") || f.EndsWith(".webm"))
-                                .Select(f => new FileInfo(f))
-                                .OrderByDescending(fi => fi.LastWriteTime)
-                                .Select(fi => fi.FullName)
-                                .ToList();
-
-            var songs = new List<Song>();
-
-            foreach (var f in files)
+            _longPressTriggered = false;
+            _pressTimer?.Dispose();
+            _pressTimer = new System.Timers.Timer(800); // 800ms long press
+            _pressTimer.AutoReset = false;
+            _pressTimer.Elapsed += (sender, e) => 
             {
-                try
+                _longPressTriggered = true;
+                _ = InvokeAsync(() =>
                 {
-                    using (var tfile = TagLib.File.Create(f))
-                    {
-                        var song = new Song
-                        {
-                            Title = !string.IsNullOrEmpty(tfile.Tag.Title) ? tfile.Tag.Title : Path.GetFileNameWithoutExtension(f),
-                            Author = tfile.Tag.FirstPerformer ?? tfile.Tag.FirstAlbumArtist ?? "Unknown Artist",
-                            FilePath = f
-                        };
-
-                        if (tfile.Tag.Pictures != null && tfile.Tag.Pictures.Length > 0)
-                        {
-                            var bin = tfile.Tag.Pictures[0].Data.Data;
-                            var mimeType = tfile.Tag.Pictures[0].MimeType ?? "image/jpeg";
-                            song.ThumbnailDataUrl = $"data:{mimeType};base64,{Convert.ToBase64String(bin)}";
-                        }
-
-                        songs.Add(song);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Error reading tags for {f}: {ex.Message}");
-                    songs.Add(new Song
-                    {
-                        Title = Path.GetFileNameWithoutExtension(f),
-                        Author = "Unknown Artist",
-                        FilePath = f
-                    });
-                }
-            }
-
-            downloadedSongs = songs;
-            PlayerService.Playlist = downloadedSongs;
+                    _songToDelete = song;
+                    _showDeleteModal = true;
+                    StateHasChanged();
+                });
+            };
+            _pressTimer.Start();
         }
 
-
-
-        private void DeleteSong(Song song)
+        private void HandlePointerUpOrLeave()
         {
-            if (File.Exists(song.FilePath))
+            if (_pressTimer != null)
             {
-                File.Delete(song.FilePath);
-                RefreshLibrary();
+                _pressTimer.Stop();
+                _pressTimer.Dispose();
+                _pressTimer = null;
             }
+        }
+
+        private async Task ConfirmDelete()
+        {
+            if (_songToDelete != null)
+            {
+                await LibraryService.DeleteSongAsync(_songToDelete);
+            }
+            _showDeleteModal = false;
+            _songToDelete = null;
+        }
+
+        private void CancelDelete()
+        {
+            _showDeleteModal = false;
+            _songToDelete = null;
+        }
+
+        private void PlayAndExpand(Song song)
+        {
+            if (_longPressTriggered)
+            {
+                // It was a long press, do not play
+                return;
+            }
+            
+            _ = PlayerService.PlaySong(song);
+            PlayerService.IsPlayerExpanded = true;
         }
     }
 }
+
