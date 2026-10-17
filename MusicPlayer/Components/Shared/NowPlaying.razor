@@ -2,7 +2,7 @@
 @inject MusicPlayer.Services.LibraryService Library
 @implements IDisposable
 <section class="now-playing" role="dialog" aria-modal="true" aria-label="Now playing" @onkeydown="OnKeyDown">
-    <header class="now-playing-header"><button class="icon-button" @ref="_closeButton" @onclick="Close" aria-label="Minimize player"><AppIcon Name="down" /></button><div><p class="eyebrow">NOW PLAYING</p><span>From your collection</span></div><button class="icon-button @(_showQueue ? "active" : "")" @onclick="() => _showQueue = !_showQueue" aria-label="Show play queue" aria-expanded="@_showQueue"><AppIcon Name="queue" /></button></header>
+    <header class="now-playing-header"><button class="icon-button" @ref="_closeButton" @onclick="Close" aria-label="Minimize player"><AppIcon Name="down" /></button><div><p class="eyebrow">NOW PLAYING</p><span>From @Player.ActiveCollectionName</span></div><button class="icon-button @(_showQueue ? "active" : "")" @onclick="() => _showQueue = !_showQueue" aria-label="Show play queue" aria-expanded="@_showQueue"><AppIcon Name="queue" /></button></header>
     @if (Player.CurrentSong is { } song)
     {
         <div class="now-playing-body">

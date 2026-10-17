@@ -1,0 +1,26 @@
+@inject MusicPlayer.Services.LibraryService Library
+
+<section class="home-collections" aria-labelledby="home-collections-title">
+    <div class="section-heading"><h2 id="home-collections-title">Your collections</h2><a class="text-button" href="/album">See all <AppIcon Name="arrow" Size="15" /></a></div>
+    <div class="collection-carousel" role="group" aria-label="Your collections">
+        <a class="collection-card collection-shelf-card" href="/album/default" aria-label="Open All downloads collection">
+            <div class="default-collection-art"><AppIcon Name="download" Size="32" /><span>ALWAYS HERE</span></div>
+            <span class="collection-card-copy"><span class="collection-kind">DEFAULT COLLECTION</span><strong>All downloads</strong><span>@TrackCount(Library.Songs.Count)</span></span>
+        </a>
+        @foreach (var collection in Library.Collections)
+        {
+            var tracks = Library.GetCollectionSongs(collection.Id).ToList();
+            <a class="collection-card collection-shelf-card" href="@($"/album/{collection.Id}")" aria-label="Open @collection.Name collection" @key="collection.Id">
+                <TrackArtwork Source="@tracks.FirstOrDefault()?.ArtworkSource" Title="@collection.Name" />
+                <span class="collection-card-copy"><span class="collection-kind">YOUR COLLECTION</span><strong>@collection.Name</strong><span>@TrackCount(tracks.Count)</span></span>
+            </a>
+        }
+        <a class="collection-card collection-shelf-card collection-shelf-create" href="/album" aria-label="Manage your collections">
+            <div class="collection-create-art"><AppIcon Name="plus" Size="30" /></div><span class="collection-card-copy"><span class="collection-kind">MAKE IT YOURS</span><strong>A new collection</strong><span>For your next moment</span></span>
+        </a>
+    </div>
+</section>
+
+@code {
+    private static string TrackCount(int count) => $"{count} {(count == 1 ? "track" : "tracks")}";
+}

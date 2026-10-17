@@ -13,7 +13,13 @@ public class LibraryService
     public ObservableCollection<MusicCollection> Collections { get; } = new();
     public string CollectionError => "";
     public event Action? LibraryUpdated;
-    public LibraryService() { Collections.Add(new MusicCollection { Id = "night", Name = "Late night", SongPaths = Songs.Take(2).Select(s => s.FilePath).ToList() }); }
+    public LibraryService()
+    {
+        Collections.Add(new MusicCollection { Id = "night", Name = "Late night", SongPaths = Songs.Take(2).Select(s => s.FilePath).ToList() });
+        Collections.Add(new MusicCollection { Id = "morning", Name = "Sunday mornings", SongPaths = Songs.Skip(2).Take(2).Select(s => s.FilePath).ToList() });
+        Collections.Add(new MusicCollection { Id = "travel", Name = "On the move", SongPaths = Songs.Skip(4).Take(2).Select(s => s.FilePath).ToList() });
+        Collections.Add(new MusicCollection { Id = "empty", Name = "A new beginning", SongPaths = new() });
+    }
     public Task LoadLibraryAsync() => Task.CompletedTask;
     public IEnumerable<Song> GetCollectionSongs(string? id) => id is null ? Songs : Songs.Where(s => Collections.FirstOrDefault(c => c.Id == id)?.SongPaths.Contains(s.FilePath) == true);
     public Task<MusicCollection> CreateCollectionAsync(string name, IEnumerable<string> paths)
@@ -29,27 +35,69 @@ public class LibraryService
     public Task DeleteSongAsync(Song song) { Songs.Remove(song); foreach (var c in Collections) c.SongPaths.Remove(song.FilePath); LibraryUpdated?.Invoke(); return Task.CompletedTask; }
     public void Clear() { Songs.Clear(); Collections.Clear(); LibraryUpdated?.Invoke(); }
 }
-public class PlayerService : INotifyPropertyChanged
+public class PlayerService : INotifyPropertyChanged, IDisposable
 {
+    private readonly LibraryService _library;
     private Song? _song;
     private bool _playing = true, _shuffle, _repeat, _expanded;
     private double _position = 62;
-    public List<Song> Playlist { get; set; }
-    public Song? CurrentSong { get => _song; set { _song = value; Changed(); } }
+    public IReadOnlyList<Song> Playlist { get; private set; } = Array.Empty<Song>();
+    public string? ActiveCollectionId { get; private set; }
+    public string ActiveCollectionName => ActiveCollectionId is null ? "All downloads" : _library.Collections.FirstOrDefault(c => c.Id == ActiveCollectionId)?.Name ?? "Collection";
+    public Song? CurrentSong { get => _song; private set { _song = value; Changed(); } }
     public bool IsPlaying { get => _playing; set { _playing = value; Changed(); } }
     public bool IsShuffle { get => _shuffle; set { _shuffle = value; Changed(); } }
     public bool IsRepeat { get => _repeat; set { _repeat = value; Changed(); } }
     public bool IsPlayerExpanded { get => _expanded; set { _expanded = value; Changed(); } }
     public double Duration => 243;
-    public double CurrentPosition { get => _position; set { _position = value; Changed(); } }
+    public double CurrentPosition { get => _position; private set { _position = value; Changed(); } }
     public event PropertyChangedEventHandler? PropertyChanged;
-    public PlayerService(LibraryService library) { Playlist = library.Songs.ToList(); _song = Playlist.FirstOrDefault(); }
+    public PlayerService(LibraryService library) { _library = library; ReplaceQueue(); _song = Playlist.FirstOrDefault(); library.LibraryUpdated += LibraryChanged; }
+    public Task InitializeAsync() => Task.CompletedTask;
     private void Changed([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new(name));
-    public Task PlaySong(Song song) { CurrentSong = song; IsPlaying = true; CurrentPosition = 0; return Task.CompletedTask; }
-    public Task TogglePlayPause() { IsPlaying = !IsPlaying; return Task.CompletedTask; }
-    public Task PlayNext() => Playlist.Count == 0 ? Task.CompletedTask : PlaySong(Playlist[(Playlist.IndexOf(CurrentSong!) + 1) % Playlist.Count]);
-    public Task PlayPrevious() => Playlist.Count == 0 ? Task.CompletedTask : PlaySong(Playlist[(Playlist.IndexOf(CurrentSong!) - 1 + Playlist.Count) % Playlist.Count]);
+    private void ReplaceQueue()
+    {
+        Playlist = _library.GetCollectionSongs(ActiveCollectionId).ToList().AsReadOnly();
+        Changed(nameof(Playlist)); Changed(nameof(ActiveCollectionId)); Changed(nameof(ActiveCollectionName));
+    }
+    private void Reconcile(bool selectFirst)
+    {
+        if (Playlist.Any(s => s.FilePath == CurrentSong?.FilePath)) return;
+        if (CurrentSong is null && !selectFirst) return;
+        CurrentSong = Playlist.FirstOrDefault(); CurrentPosition = 0;
+        if (CurrentSong is null) { IsPlaying = false; IsPlayerExpanded = false; }
+    }
+    private void LibraryChanged() { ReplaceQueue(); Reconcile(false); }
+    public Task SelectCollectionAsync(string? id) { ActiveCollectionId = id; ReplaceQueue(); Reconcile(true); return Task.CompletedTask; }
+    public Task PlayFromCollectionAsync(string? id, Song? song = null, bool shuffle = false)
+    {
+        ActiveCollectionId = id; IsShuffle = shuffle; ReplaceQueue();
+        var selected = song is not null ? Playlist.FirstOrDefault(s => s.FilePath == song.FilePath) : Playlist.Count == 0 ? null : Playlist[shuffle ? Random.Shared.Next(Playlist.Count) : 0];
+        if (selected is null) { Reconcile(true); return Task.CompletedTask; }
+        return PlaySong(selected);
+    }
+    public Task PlaySong(Song song)
+    {
+        var member = Playlist.FirstOrDefault(s => s.FilePath == song.FilePath);
+        if (member is not null) { CurrentSong = member; IsPlaying = true; CurrentPosition = 0; }
+        return Task.CompletedTask;
+    }
+    public Task TogglePlayPause() { if (CurrentSong is not null) IsPlaying = !IsPlaying; return Task.CompletedTask; }
+    public Task PlayNext()
+    {
+        if (Playlist.Count == 0) return Task.CompletedTask;
+        var index = Playlist.ToList().FindIndex(s => s.FilePath == CurrentSong?.FilePath);
+        var choices = Playlist.Where(s => s.FilePath != CurrentSong?.FilePath).ToList();
+        return PlaySong(IsShuffle && choices.Count > 0 ? choices[Random.Shared.Next(choices.Count)] : Playlist[(index + 1) % Playlist.Count]);
+    }
+    public Task PlayPrevious()
+    {
+        if (Playlist.Count == 0) return Task.CompletedTask;
+        var index = Playlist.ToList().FindIndex(s => s.FilePath == CurrentSong?.FilePath);
+        return PlaySong(Playlist[index < 0 ? 0 : (index - 1 + Playlist.Count) % Playlist.Count]);
+    }
     public void Seek(double value) => CurrentPosition = value;
+    public void Dispose() => _library.LibraryUpdated -= LibraryChanged;
 }
 public class DownloadService
 {

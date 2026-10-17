@@ -1,7 +1,9 @@
 @page "/album"
+@page "/album/{CollectionId}"
 @using MusicPlayer.Models
 @inject MusicPlayer.Services.LibraryService Library
 @inject MusicPlayer.Services.PlayerService Player
+@inject NavigationManager Navigation
 @implements IDisposable
 
 <PageTitle>Collections · Nar Htaung Lite</PageTitle>
@@ -34,7 +36,10 @@
         <div class="collection-detail-heading"><TrackArtwork Source="@SelectedSongs.FirstOrDefault()?.ArtworkSource" Title="@SelectedName" /><div><p class="eyebrow">@(_selectedId is null ? "DEFAULT COLLECTION" : "YOUR COLLECTION")</p><h2>@SelectedName</h2><p class="muted">@TrackCount(SelectedSongs.Count)</p></div></div>
         <div class="collection-toolbar">
             <p class="muted">@(_selectedId is null ? "Every song you download is saved here." : "Songs stay in All downloads, too.")</p>
-            @if (_selectedId is not null) { <button class="button button-secondary" @onclick="OpenAdd"><AppIcon Name="plus" Size="18" />Add songs</button> }
+            <div class="collection-play-actions">
+                <button class="button button-primary small-button" @onclick="Shuffle" disabled="@(!SelectedSongs.Any())" aria-label="Shuffle @SelectedName"><AppIcon Name="shuffle" Size="17" />Shuffle</button>
+                @if (_selectedId is not null) { <button class="button button-secondary small-button" @onclick="OpenAdd"><AppIcon Name="plus" Size="18" />Add songs</button> }
+            </div>
         </div>
         @if (SelectedSongs.Any())
         {
@@ -88,6 +93,7 @@
 }
 
 @code {
+    [Parameter] public string? CollectionId { get; set; }
     private bool _showDetail, _editing, _creating, _saving;
     private string? _selectedId;
     private string _name = "", _filter = "", _editorError = "", _pageError = "";
@@ -110,14 +116,22 @@
         Library.LibraryUpdated += Refresh;
         Player.PropertyChanged += PlayerChanged;
         await Library.LoadLibraryAsync();
+        await Player.InitializeAsync();
+    }
+    protected override async Task OnParametersSetAsync()
+    {
+        _showDetail = CollectionId is not null;
+        if (!_showDetail) return;
+        _selectedId = CollectionId == "default" ? null : CollectionId;
+        await Player.SelectCollectionAsync(_selectedId);
     }
     private void Refresh() => _ = InvokeAsync(StateHasChanged);
     private void PlayerChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(Player.CurrentSong) or nameof(Player.IsPlaying)) Refresh();
     }
-    private void OpenCollection(string? id) { _selectedId = id; _showDetail = true; _pageError = ""; }
-    private void BackToCollections() { _showDetail = false; _pageError = ""; }
+    private void OpenCollection(string? id) { _pageError = ""; Navigation.NavigateTo("/album/" + (id ?? "default")); }
+    private void BackToCollections() { _pageError = ""; Navigation.NavigateTo("/album"); }
     private void OpenCreate() { _creating = true; OpenEditor(); }
     private void OpenAdd() { _creating = false; OpenEditor(); }
     private void OpenEditor() { _name = ""; _filter = ""; _chosen.Clear(); _editorError = ""; _editing = true; }
@@ -148,9 +162,13 @@
     }
     private async Task Play(Song song)
     {
-        Player.Playlist = SelectedSongs;
-        await Player.PlaySong(song);
+        await Player.PlayFromCollectionAsync(_selectedId, song);
         Player.IsPlayerExpanded = true;
+    }
+    private async Task Shuffle()
+    {
+        await Player.PlayFromCollectionAsync(_selectedId, shuffle: true);
+        Player.IsPlayerExpanded = Player.CurrentSong is not null;
     }
     public void Dispose() { Library.LibraryUpdated -= Refresh; Player.PropertyChanged -= PlayerChanged; }
 }

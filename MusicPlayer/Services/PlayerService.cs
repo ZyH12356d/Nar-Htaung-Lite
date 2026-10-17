@@ -3,306 +3,256 @@ using MusicPlayer.Models;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using Microsoft.Maui.Storage;
-using System.Timers;
 using Timer = System.Timers.Timer;
 
-namespace MusicPlayer.Services
+namespace MusicPlayer.Services;
+
+public class PlayerService : INotifyPropertyChanged, IDisposable
 {
-    public class PlayerService : INotifyPropertyChanged, IDisposable
+    private readonly IAudioManager _audioManager;
+    private readonly IMediaNotificationService _notificationService;
+    private readonly LibraryService _library;
+    private readonly Timer _progressTimer = new(500) { AutoReset = true };
+    private IAudioPlayer? _audioPlayer;
+    private Stream? _audioStream;
+    private IReadOnlyList<Song> _playlist = Array.Empty<Song>();
+    private Song? _currentSong;
+    private bool _isPlaying, _isShuffle, _isRepeat, _isPlayerExpanded, _initialized, _disposed;
+    private double _currentPosition, _duration, _resumePosition;
+    private Task? _initialization;
+
+    public PlayerService(IAudioManager audioManager, IMediaNotificationService notificationService, LibraryService library)
     {
-        private readonly IAudioManager _audioManager;
-        private readonly IMediaNotificationService _notificationService;
-        private IAudioPlayer? _audioPlayer;
-        private List<Song> _playlist = new();
-        private Song? _currentSong;
-        private bool _isPlaying;
-        private bool _isShuffle;
-        private bool _isRepeat;
-        private bool _isPlayerExpanded;
-        private double _currentPosition;
-        private double _duration;
-        private System.Timers.Timer _progressTimer;
-        private Random _rng = new Random();
-        private bool _isPositionRestored = false;
+        _audioManager = audioManager;
+        _notificationService = notificationService;
+        _library = library;
+        _library.LibraryUpdated += LibraryChanged;
+        _progressTimer.Elapsed += (_, _) => MainThread.BeginInvokeOnMainThread(UpdateProgress);
+    }
 
-        public PlayerService(IAudioManager audioManager, IMediaNotificationService notificationService)
+    // Only the player changes the queue. Visiting Home or repairing artwork must not replace it.
+    public IReadOnlyList<Song> Playlist => _playlist;
+    public string? ActiveCollectionId { get; private set; }
+    public string ActiveCollectionName => ActiveCollectionId is null ? "All downloads"
+        : _library.Collections.FirstOrDefault(c => c.Id == ActiveCollectionId)?.Name ?? "Collection";
+    public Song? CurrentSong { get => _currentSong; private set { _currentSong = value; OnPropertyChanged(); } }
+    public bool IsPlaying { get => _isPlaying; private set { _isPlaying = value; OnPropertyChanged(); } }
+    public bool IsShuffle { get => _isShuffle; set { _isShuffle = value; OnPropertyChanged(); } }
+    public bool IsRepeat { get => _isRepeat; set { _isRepeat = value; OnPropertyChanged(); } }
+    public bool IsPlayerExpanded { get => _isPlayerExpanded; set { _isPlayerExpanded = value; OnPropertyChanged(); } }
+    public double CurrentPosition { get => _currentPosition; private set { _currentPosition = value; OnPropertyChanged(); } }
+    public double Duration { get => _duration; private set { _duration = value; OnPropertyChanged(); } }
+    public event PropertyChangedEventHandler? PropertyChanged;
+    private void OnPropertyChanged([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new(name));
+
+    public Task InitializeAsync() => _initialization ??= InitializeCoreAsync();
+
+    private async Task InitializeCoreAsync()
+    {
+        await _library.LoadLibraryAsync();
+        await MainThread.InvokeOnMainThreadAsync(() =>
         {
-            _audioManager = audioManager;
-            _notificationService = notificationService;
-            _progressTimer = new Timer(500); // More frequent updates for smoother UI
-            _progressTimer.AutoReset = true;
-            _progressTimer.Elapsed += (s, e) => UpdateProgress();
-            
-            // Try to load the last played song from preferences
-            var lastPath = Preferences.Get("LastSongPath", string.Empty);
-            if (!string.IsNullOrEmpty(lastPath) && File.Exists(lastPath))
-            {
-                // We'll let Home.razor populate the playlist first, 
-                // but we can set the initial current song if we find it.
-            }
+            if (_disposed) return;
+            var savedCollection = Preferences.Get("PlaybackCollectionId", "");
+            ActiveCollectionId = _library.Collections.Any(c => c.Id == savedCollection) ? savedCollection : null;
+            ReplaceQueue();
+            var lastPath = Preferences.Get("LastSongPath", "");
+            CurrentSong = _playlist.FirstOrDefault(s => s.FilePath == lastPath);
+            _resumePosition = CurrentSong is null ? 0 : Math.Max(0, Preferences.Get("LastSongPosition", 0.0));
+            CurrentPosition = _resumePosition;
+            _initialized = true;
+        });
+    }
+
+    private async Task RunAsync(Action action)
+    {
+        await InitializeAsync();
+        await MainThread.InvokeOnMainThreadAsync(() => { if (!_disposed) action(); });
+    }
+
+    public Task SelectCollectionAsync(string? collectionId) => RunAsync(() =>
+    {
+        ActiveCollectionId = collectionId;
+        ReplaceQueue();
+        ReconcileCurrentSong(selectFirst: true);
+    });
+
+    public Task PlayFromCollectionAsync(string? collectionId, Song? song = null, bool shuffle = false) => RunAsync(() =>
+    {
+        ActiveCollectionId = collectionId;
+        IsShuffle = shuffle;
+        ReplaceQueue();
+        var selected = song is not null ? _playlist.FirstOrDefault(s => s.FilePath == song.FilePath)
+            : _playlist.Count == 0 ? null : _playlist[shuffle ? Random.Shared.Next(_playlist.Count) : 0];
+        if (selected is null) { ReconcileCurrentSong(selectFirst: true); return; }
+        PlayCore(selected);
+    });
+
+    private void LibraryChanged() => MainThread.BeginInvokeOnMainThread(() =>
+    {
+        if (!_initialized || _disposed) return;
+        ReplaceQueue();
+        ReconcileCurrentSong(selectFirst: false);
+    });
+
+    private void ReplaceQueue()
+    {
+        _playlist = Array.AsReadOnly(_library.GetCollectionSongs(ActiveCollectionId)
+            .Where(s => File.Exists(s.FilePath)).DistinctBy(s => s.FilePath).ToArray());
+        Preferences.Set("PlaybackCollectionId", ActiveCollectionId ?? "");
+        OnPropertyChanged(nameof(Playlist));
+        OnPropertyChanged(nameof(ActiveCollectionId));
+        OnPropertyChanged(nameof(ActiveCollectionName));
+    }
+
+    private void ReconcileCurrentSong(bool selectFirst)
+    {
+        var retained = _playlist.FirstOrDefault(s => s.FilePath == CurrentSong?.FilePath);
+        if (retained is not null)
+        {
+            if (!ReferenceEquals(retained, CurrentSong)) CurrentSong = retained;
+            return;
         }
-
-        public List<Song> Playlist
+        if (CurrentSong is null && !selectFirst) return;
+        var continuePlaying = IsPlaying;
+        var next = _playlist.FirstOrDefault();
+        if (next is not null && continuePlaying) PlayCore(next);
+        else
         {
-            get => _playlist;
-            set { 
-                _playlist = value; 
-                OnPropertyChanged();
-                
-                // If we have a stored path, try to find the actual Song object
-                var lastPath = Preferences.Get("LastSongPath", string.Empty);
-                if (CurrentSong == null && !string.IsNullOrEmpty(lastPath))
-                {
-                    CurrentSong = _playlist.FirstOrDefault(s => s.FilePath == lastPath);
-                }
-            }
-        }
-
-        public Song? CurrentSong
-        {
-            get => _currentSong;
-            set { 
-                _currentSong = value; 
-                OnPropertyChanged(); 
-                if (_currentSong != null)
-                {
-                    Preferences.Set("LastSongPath", _currentSong.FilePath);
-                    
-                    // If we are restoring the song on startup, load the stored position
-                    if (!_isPositionRestored)
-                    {
-                        var lastPath = Preferences.Get("LastSongPath", string.Empty);
-                        if (_currentSong.FilePath == lastPath)
-                        {
-                            CurrentPosition = Preferences.Get("LastSongPosition", 0.0);
-                        }
-                    }
-                }
-            }
-        }
-
-        public bool IsPlaying
-        {
-            get => _isPlaying;
-            private set { _isPlaying = value; OnPropertyChanged(); }
-        }
-
-        public bool IsShuffle
-        {
-            get => _isShuffle;
-            set { _isShuffle = value; OnPropertyChanged(); }
-        }
-
-        public bool IsRepeat
-        {
-            get => _isRepeat;
-            set { _isRepeat = value; OnPropertyChanged(); }
-        }
-
-        public bool IsPlayerExpanded
-        {
-            get => _isPlayerExpanded;
-            set { _isPlayerExpanded = value; OnPropertyChanged(); }
-        }
-
-        public double CurrentPosition
-        {
-            get => _currentPosition;
-            set { _currentPosition = value; OnPropertyChanged(); }
-        }
-
-        public double Duration
-        {
-            get => _duration;
-            set { _duration = value; OnPropertyChanged(); }
-        }
-
-        public event PropertyChangedEventHandler? PropertyChanged;
-
-        protected void OnPropertyChanged([CallerMemberName] string? name = null)
-        {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
-        }
-
-        public async Task PlaySong(Song song)
-        {
-            try 
-            {
-                if (!File.Exists(song.FilePath))
-                {
-                    Console.WriteLine($"File not found: {song.FilePath}");
-                    return;
-                }
-
-                // Clean up previous player
-                if (_audioPlayer != null)
-                {
-                    _progressTimer.Stop();
-                    _audioPlayer.PlaybackEnded -= OnPlaybackEnded;
-                    _audioPlayer.Stop();
-                    _audioPlayer.Dispose();
-                }
-
-                CurrentSong = song;
-                
-                // Create native player from file stream
-                var stream = File.OpenRead(song.FilePath);
-                _audioPlayer = _audioManager.CreatePlayer(stream);
-                _audioPlayer.PlaybackEnded += OnPlaybackEnded;
-
-                Duration = _audioPlayer.Duration;
-
-                // If it is the startup restored song, seek to the saved position
-                if (!_isPositionRestored)
-                {
-                    var lastPath = Preferences.Get("LastSongPath", string.Empty);
-                    if (song.FilePath == lastPath)
-                    {
-                        var savedPosition = Preferences.Get("LastSongPosition", 0.0);
-                        if (savedPosition > 0 && savedPosition < Duration)
-                        {
-                            _audioPlayer.Seek(savedPosition);
-                            CurrentPosition = savedPosition;
-                        }
-                    }
-                    _isPositionRestored = true;
-                }
-                else
-                {
-                    // For a normal new song play, start from 0 and clear saved position
-                    CurrentPosition = 0;
-                    Preferences.Set("LastSongPosition", 0.0);
-                }
-
-                _audioPlayer.Play();
-                IsPlaying = true;
-                _progressTimer.Start();
-
-                // Update notification
-                _notificationService.UpdateMetadata(song.Title, song.Author, song.ThumbnailDataUrl ?? "", Duration);
-                _notificationService.UpdatePlaybackStatus(true, CurrentPosition);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error playing song natively: {ex.Message}");
-                IsPlaying = false;
-            }
-        }
-
-        private void UpdateProgress()
-        {
-            if (_audioPlayer != null && IsPlaying)
-            {
-                var newPos = _audioPlayer.CurrentPosition;
-                
-                // If it's the same second, don't trigger property change
-                if (Math.Floor(newPos) != Math.Floor(_currentPosition))
-                {
-                    _currentPosition = newPos;
-                    OnPropertyChanged(nameof(CurrentPosition));
-
-                    // Save position to preferences so we can restore it if killed
-                    Preferences.Set("LastSongPosition", _currentPosition);
-                }
-            }
-        }
-
-        private void OnPlaybackEnded(object? sender, EventArgs e)
-        {
-            _progressTimer.Stop();
-            _ = HandleTrackEnded();
-        }
-
-        public Task TogglePlayPause()
-        {
-            if (_audioPlayer == null && CurrentSong != null)
-            {
-                // If it's loaded from Preferences but not yet "played", we need to initialize it
-                _ = PlaySong(CurrentSong);
-                return Task.CompletedTask;
-            }
-
-            if (_audioPlayer == null) return Task.CompletedTask;
-
-            if (_audioPlayer.IsPlaying)
-            {
-                _audioPlayer.Pause();
-                IsPlaying = false;
-                _progressTimer.Stop();
-                _notificationService.UpdatePlaybackStatus(false, _audioPlayer.CurrentPosition);
-            }
-            else
-            {
-                _audioPlayer.Play();
-                IsPlaying = true;
-                _progressTimer.Start();
-                _notificationService.UpdatePlaybackStatus(true, _audioPlayer.CurrentPosition);
-            }
-
-            return Task.CompletedTask;
-        }
-
-        public void Seek(double seconds)
-        {
-            if (_audioPlayer != null)
-            {
-                _audioPlayer.Seek(seconds);
-                CurrentPosition = seconds;
-                _notificationService.UpdatePlaybackStatus(IsPlaying, seconds);
-            }
-        }
-
-        public async Task PlayNext()
-        {
-            if (!_playlist.Any()) return;
-
-            Song nextSong;
-            if (IsShuffle)
-            {
-                nextSong = _playlist[_rng.Next(_playlist.Count)];
-            }
-            else
-            {
-                int currentIndex = _playlist.IndexOf(CurrentSong!);
-                int nextIndex = (currentIndex + 1) % _playlist.Count;
-                nextSong = _playlist[nextIndex];
-            }
-
-            await PlaySong(nextSong);
-        }
-
-        public async Task PlayPrevious()
-        {
-            if (!_playlist.Any()) return;
-
-            int currentIndex = _playlist.IndexOf(CurrentSong!);
-            int prevIndex = (currentIndex - 1 + _playlist.Count) % _playlist.Count;
-            await PlaySong(_playlist[prevIndex]);
-        }
-
-        public async Task HandleTrackEnded()
-        {
+            StopNativePlayer();
+            IsPlaying = false;
+            CurrentSong = next;
+            Duration = CurrentPosition = _resumePosition = 0;
+            Preferences.Set("LastSongPath", next?.FilePath ?? "");
             Preferences.Set("LastSongPosition", 0.0);
-            
-            if (IsRepeat)
-            {
-                if (CurrentSong != null) await PlaySong(CurrentSong);
-            }
-            else
-            {
-                await PlayNext();
-            }
+            _notificationService.UpdatePlaybackStatus(false, 0);
+            if (next is null) IsPlayerExpanded = false;
         }
+    }
 
-        public void Dispose()
+    // Queue rows and skip controls may only play members of the active collection.
+    public Task PlaySong(Song song) => RunAsync(() =>
+    {
+        var member = _playlist.FirstOrDefault(s => s.FilePath == song.FilePath);
+        if (member is not null) PlayCore(member);
+    });
+
+    private void PlayCore(Song song, double resumeAt = 0)
+    {
+        StopNativePlayer();
+        try
         {
-            _progressTimer.Stop();
-            _progressTimer.Dispose();
-            if (_audioPlayer != null)
-            {
-                _audioPlayer.PlaybackEnded -= OnPlaybackEnded;
-                _audioPlayer.Dispose();
-            }
+            // Drop the previous source even if the new file cannot be opened or decoded.
+            CurrentSong = song;
+            Duration = CurrentPosition = _resumePosition = 0;
+            Preferences.Set("LastSongPath", song.FilePath);
+            Preferences.Set("LastSongPosition", 0.0);
+            _audioStream = File.OpenRead(song.FilePath);
+            _audioPlayer = _audioManager.CreatePlayer(_audioStream);
+            _audioPlayer.PlaybackEnded += OnPlaybackEnded;
+            Duration = _audioPlayer.Duration;
+            CurrentPosition = resumeAt > 0 && resumeAt < Duration ? resumeAt : 0;
+            if (CurrentPosition > 0) _audioPlayer.Seek(CurrentPosition);
+            Preferences.Set("LastSongPosition", CurrentPosition);
+            _audioPlayer.Play();
+            IsPlaying = true;
+            _progressTimer.Start();
+            _notificationService.UpdateMetadata(song.Title, song.Author, song.ThumbnailDataUrl, Duration);
+            _notificationService.UpdatePlaybackStatus(true, CurrentPosition);
         }
+        catch (Exception ex)
+        {
+            StopNativePlayer();
+            IsPlaying = false;
+            _notificationService.UpdatePlaybackStatus(false, 0);
+            Console.WriteLine($"Error playing song natively: {ex.Message}");
+        }
+    }
+
+    private void StopNativePlayer()
+    {
+        _progressTimer.Stop();
+        if (_audioPlayer is not null)
+        {
+            _audioPlayer.PlaybackEnded -= OnPlaybackEnded;
+            _audioPlayer.Stop();
+            _audioPlayer.Dispose();
+            _audioPlayer = null;
+        }
+        _audioStream?.Dispose();
+        _audioStream = null;
+    }
+
+    private void UpdateProgress()
+    {
+        if (_disposed || _audioPlayer is null || !IsPlaying) return;
+        var position = _audioPlayer.CurrentPosition;
+        if (Math.Floor(position) == Math.Floor(CurrentPosition)) return;
+        CurrentPosition = position;
+        Preferences.Set("LastSongPosition", position);
+    }
+
+    private void OnPlaybackEnded(object? sender, EventArgs e) => MainThread.BeginInvokeOnMainThread(() =>
+    {
+        if (_disposed || (sender is not null && !ReferenceEquals(sender, _audioPlayer))) return;
+        _progressTimer.Stop();
+        TrackEndedCore();
+    });
+
+    public Task TogglePlayPause() => RunAsync(() =>
+    {
+        if (_audioPlayer is null)
+        {
+            if (CurrentSong is { } song && _playlist.Any(s => s.FilePath == song.FilePath)) PlayCore(song, _resumePosition);
+            return;
+        }
+        if (IsPlaying) { _audioPlayer.Pause(); _progressTimer.Stop(); IsPlaying = false; }
+        else { _audioPlayer.Play(); _progressTimer.Start(); IsPlaying = true; }
+        _notificationService.UpdatePlaybackStatus(IsPlaying, _audioPlayer.CurrentPosition);
+    });
+
+    public void Seek(double seconds)
+    {
+        if (_audioPlayer is null || _disposed) return;
+        _audioPlayer.Seek(Math.Clamp(seconds, 0, Duration));
+        CurrentPosition = _audioPlayer.CurrentPosition;
+        Preferences.Set("LastSongPosition", CurrentPosition);
+        _notificationService.UpdatePlaybackStatus(IsPlaying, CurrentPosition);
+    }
+
+    public Task PlayNext() => RunAsync(NextCore);
+    private void NextCore()
+    {
+        if (_playlist.Count == 0) return;
+        var index = _playlist.ToList().FindIndex(s => s.FilePath == CurrentSong?.FilePath);
+        if (IsShuffle && _playlist.Count > 1)
+        {
+            var choices = _playlist.Where(s => s.FilePath != CurrentSong?.FilePath).ToArray();
+            PlayCore(choices[Random.Shared.Next(choices.Length)]);
+        }
+        else PlayCore(_playlist[(index + 1) % _playlist.Count]);
+    }
+
+    public Task PlayPrevious() => RunAsync(() =>
+    {
+        if (_playlist.Count == 0) return;
+        var index = _playlist.ToList().FindIndex(s => s.FilePath == CurrentSong?.FilePath);
+        PlayCore(_playlist[index < 0 ? 0 : (index - 1 + _playlist.Count) % _playlist.Count]);
+    });
+
+    public Task HandleTrackEnded() => RunAsync(TrackEndedCore);
+    private void TrackEndedCore()
+    {
+        if (IsRepeat && CurrentSong is { } song && _playlist.Any(s => s.FilePath == song.FilePath)) PlayCore(song);
+        else NextCore();
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _library.LibraryUpdated -= LibraryChanged;
+        StopNativePlayer();
+        _progressTimer.Dispose();
     }
 }

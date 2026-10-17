@@ -18,13 +18,14 @@
 @code {
     private bool _dark = true;
     private bool IsPlayerRoute => NavigationManager.ToBaseRelativePath(NavigationManager.Uri).Split('?')[0] == "player";
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         NavigationManager.LocationChanged += LocationChanged;
         NavigationService.NavigateToHomeRequested += NavigateHome;
         NavigationService.CollapsePlayerRequested += CollapsePlayer;
         PlayerService.PropertyChanged += PlayerChanged;
         NavigationService.CurrentPage = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
+        await PlayerService.InitializeAsync();
     }
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {

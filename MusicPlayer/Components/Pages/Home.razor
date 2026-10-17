@@ -18,6 +18,7 @@
     else
     {
         <div class="library-summary"><span><AppIcon Name="offline" Size="16" />@LibraryService.Songs.Count tracks, ready offline</span><button class="button button-primary small-button" @onclick="ShuffleAll"><AppIcon Name="shuffle" Size="17" />Shuffle</button></div>
+        <CollectionShelf />
         <section class="recent-section" aria-labelledby="recent-title">
             <div class="section-heading"><h2 id="recent-title">Fresh in your library</h2><span class="muted">Recently saved</span></div>
             <div class="cover-carousel">
@@ -42,6 +43,7 @@
             @if (!FilteredSongs.Any()) { <p class="inline-empty">No tracks match “@_filter”.</p> }
         </section>
     }
+    @if (!_loading && !LibraryService.Songs.Any()) { <CollectionShelf /> }
 </section>
 
 @if (_songToDelete is not null)

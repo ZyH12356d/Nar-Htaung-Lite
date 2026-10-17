@@ -19,12 +19,11 @@ public partial class Home : IDisposable
         LibraryService.LibraryUpdated += LibraryChanged;
         PlayerService.PropertyChanged += PlayerChanged;
         await LibraryService.LoadLibraryAsync();
-        PlayerService.Playlist = LibraryService.Songs.ToList();
+        await PlayerService.InitializeAsync();
         _loading = false;
     }
     private void LibraryChanged() => _ = InvokeAsync(() =>
     {
-        PlayerService.Playlist = LibraryService.Songs.ToList();
         StateHasChanged();
     });
     private void PlayerChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -34,15 +33,13 @@ public partial class Home : IDisposable
     }
     private async Task PlayAndExpand(Song song)
     {
-        PlayerService.Playlist = LibraryService.Songs.ToList();
-        await PlayerService.PlaySong(song);
+        await PlayerService.PlayFromCollectionAsync(null, song);
         PlayerService.IsPlayerExpanded = true;
     }
     private async Task ShuffleAll()
     {
-        PlayerService.Playlist = LibraryService.Songs.ToList();
-        PlayerService.IsShuffle = true;
-        await PlayAndExpand(LibraryService.Songs[Random.Shared.Next(LibraryService.Songs.Count)]);
+        await PlayerService.PlayFromCollectionAsync(null, shuffle: true);
+        PlayerService.IsPlayerExpanded = PlayerService.CurrentSong is not null;
     }
     private void AskDelete(Song song) => _songToDelete = song;
     private void CancelDelete() => _songToDelete = null;

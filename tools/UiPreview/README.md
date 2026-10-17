@@ -21,5 +21,10 @@ the optional download destination dialog, and Previous in the mini player.
 Collection changes in this preview are held in memory; the offline regression checks exercise
 the production collection persistence code.
 
+Home includes a horizontal collection shelf with several fixture collections. Open Sunday
+mornings while another collection is playing, use its Shuffle button, inspect the two-song
+queue, and return Home to check that the active queue stays intact. Home shuffle should select
+all seven fixture tracks. The empty collection should stop playback and disable shuffle.
+
 The /preview/search-results route renders fixture search results, and /preview/review
 shows three phone screens together for visual review.

@@ -1091,7 +1091,19 @@ h1:focus {
     margin:22px auto 29px
 }
 .now-playing-header>div {
-    text-align:center
+    text-align:center;
+    min-width:0;
+    flex:1;
+    padding:0 10px
+}
+.now-playing-header>div>span {
+    display:block;
+    overflow:hidden;
+    white-space:nowrap;
+    text-overflow:ellipsis
+}
+.now-playing-header>.icon-button {
+    flex-shrink:0
 }
 .now-playing-header .eyebrow {
     margin:0 0 3px;
@@ -1756,6 +1768,79 @@ body:has(.now-playing) {
     flex-shrink:0;
     padding:10px 12px;
     font-size:12px
+}
+.collection-play-actions {
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    flex-shrink:0
+}
+.collection-play-actions>.button {
+    min-height:44px;
+    padding:10px 13px;
+    font-size:12px
+}
+.collection-toolbar {
+    flex-wrap:wrap
+}
+.home-collections {
+    margin:28px 0 30px
+}
+.home-collections .section-heading .text-button {
+    display:flex;
+    align-items:center;
+    gap:6px;
+    min-height:44px
+}
+.collection-carousel {
+    display:flex;
+    gap:16px;
+    overflow-x:auto;
+    overscroll-behavior-x:contain;
+    scroll-snap-type:x proximity;
+    scrollbar-width:none;
+    padding:3px 22px 12px 3px;
+    margin:0 -22px 0 -3px
+}
+.collection-carousel::-webkit-scrollbar {
+    display:none
+}
+.collection-shelf-card {
+    flex:0 0 144px;
+    width:144px;
+    scroll-snap-align:start;
+    text-decoration:none;
+    color:var(--text)
+}
+.collection-shelf-card .collection-card-copy {
+    margin-top:11px
+}
+.collection-shelf-card .collection-card-copy strong {
+    font-size:13px
+}
+.collection-shelf-card .collection-kind {
+    font-size:8px;
+    letter-spacing:1px
+}
+.collection-create-art {
+    width:100%;
+    aspect-ratio:1;
+    display:grid;
+    place-items:center;
+    border:1px dashed var(--muted);
+    border-radius:18px;
+    color:var(--muted);
+    background:var(--surface-soft)
+}
+@media(min-width:600px) {
+    .collection-shelf-card {
+        flex-basis:170px;
+        width:170px
+    }
+    .collection-carousel {
+        margin-right:0;
+        padding-right:3px
+    }
 }
 .collection-dialog {
     width:min(520px,calc(100vw - 28px));

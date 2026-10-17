@@ -28,7 +28,12 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Collections keep existing songs and persist selected tracks", CollectionRegression.PersistenceAsync),
     ("Downloads and collection edits preserve default and shared membership", CollectionRegression.MembershipAsync),
     ("Invalid names and failed saves do not publish collections", CollectionRegression.ValidationAsync),
-    ("Damaged collection data leaves downloads usable and is preserved", CollectionRegression.CorruptFileAsync)
+    ("Damaged collection data leaves downloads usable and is preserved", CollectionRegression.CorruptFileAsync),
+    ("Switching collections restricts current, next, previous and track-end playback", PlaybackRegression.SwitchAsync),
+    ("Library refreshes preserve collection playback and membership edits update it", PlaybackRegression.RefreshAsync),
+    ("Restarting restores the collection and only its matching song position", PlaybackRegression.RestoreAsync),
+    ("Collection shuffle and repeat stay inside the selected queue", PlaybackRegression.ShuffleAsync),
+    ("A native decoder failure cannot retain playback from the previous collection", PlaybackRegression.NativeFailureAsync)
 };
 
 var failed = 0;
@@ -45,7 +50,7 @@ foreach (var test in tests)
         Console.WriteLine($"FAIL: {test.Name}: {ex}");
     }
 }
-Console.WriteLine($"{tests.Length - failed}/{tests.Length} download regression checks passed.");
+Console.WriteLine($"{tests.Length - failed}/{tests.Length} regression checks passed.");
 return failed == 0 ? 0 : 1;
 
 static async Task SuccessfulDownload()

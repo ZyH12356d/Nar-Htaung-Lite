@@ -25,3 +25,9 @@ and an interrupted connection. A successful download should enter the library;
 an unavailable video should show the original failure reason without claiming bot detection.
 Create a collection, download a song into it, and reopen the app to verify its membership.
 Every downloaded song should also appear in the default All downloads collection.
+
+Playback checks use the production PlayerService with simulated native audio and preferences.
+They cover switching collections while playing or paused, next/previous/track-end boundaries,
+queue updates after membership edits or downloads, restoring a collection after restarting,
+ignoring stale song preferences, shuffle, repeat, and empty collections. Home initializes the
+player without replacing its queue; choosing a Home track or Home shuffle selects All downloads.
