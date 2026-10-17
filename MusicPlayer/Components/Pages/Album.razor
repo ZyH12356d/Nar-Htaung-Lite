@@ -43,10 +43,9 @@
         </div>
         @if (SelectedSongs.Any())
         {
-            <div class="track-list">
-                @foreach (var song in SelectedSongs)
-                {
-                    if (_selectedId is null)
+            <div class="track-list virtual-track-list">
+                <Virtualize Items="SelectedSongs" Context="song" ItemSize="71" OverscanCount="4">
+                    @if (_selectedId is null)
                     {
                         <TrackRow Song="song" Active="@(Player.CurrentSong?.FilePath == song.FilePath)" Playing="Player.IsPlaying" OnPlay="Play" />
                     }
@@ -54,7 +53,7 @@
                     {
                         <TrackRow Song="song" Active="@(Player.CurrentSong?.FilePath == song.FilePath)" Playing="Player.IsPlaying" OnPlay="Play" OnDelete="Remove" ActionLabel="Remove from collection:" ActionIcon="minus" />
                     }
-                }
+                </Virtualize>
             </div>
         }
         else
@@ -76,12 +75,11 @@
             <div class="collection-selection-heading"><h3>From All downloads</h3><span class="muted">@_chosen.Count selected</span></div>
             @if (AvailableSongs.Any())
             {
-                <label class="search-field collection-filter"><AppIcon Name="search" Size="18" /><input type="search" aria-label="Filter songs to add" placeholder="Find a saved song" @bind="_filter" @bind:event="oninput" /></label>
+                <label class="search-field collection-filter"><AppIcon Name="search" Size="18" /><input type="search" aria-label="Filter songs to add" placeholder="Find a saved song" @bind="Filter" @bind:event="oninput" /></label>
                 <div class="song-picker">
-                    @foreach (var song in FilteredAvailableSongs)
-                    {
+                    <Virtualize Items="FilteredAvailableSongs" Context="song" ItemSize="64" OverscanCount="3">
                         <label class="picker-row" @key="song.FilePath"><input type="checkbox" checked="@_chosen.Contains(song.FilePath)" @onchange="() => Toggle(song.FilePath)" disabled="@_saving" /><TrackArtwork Source="@song.ArtworkSource" Title="@song.Title" Class="track-cover" /><span><strong>@song.Title</strong><small>@song.Author</small></span></label>
-                    }
+                    </Virtualize>
                     @if (!FilteredAvailableSongs.Any()) { <p class="inline-empty">No matching songs.</p> }
                 </div>
             }
@@ -99,17 +97,17 @@
     private string _name = "", _filter = "", _editorError = "", _pageError = "";
     private readonly HashSet<string> _chosen = new();
     private string SelectedName => _selectedId is null ? "All downloads" : Library.Collections.FirstOrDefault(c => c.Id == _selectedId)?.Name ?? "Collection";
-    private List<Song> SelectedSongs => Library.GetCollectionSongs(_selectedId).ToList();
-    private List<Song> AvailableSongs
+    private List<Song> SelectedSongs = new(), AvailableSongs = new(), FilteredAvailableSongs = new();
+    private string Filter { get => _filter; set { _filter = value; ApplyAvailableFilter(); } }
+    private void UpdateSongLists()
     {
-        get
-        {
-            if (_creating) return Library.Songs.ToList();
-            var included = SelectedSongs.Select(s => s.FilePath).ToHashSet();
-            return Library.Songs.Where(s => !included.Contains(s.FilePath)).ToList();
-        }
+        SelectedSongs = Library.GetCollectionSongs(_selectedId).ToList();
+        var included = _creating ? new HashSet<string>() : SelectedSongs.Select(s => s.FilePath).ToHashSet();
+        AvailableSongs = Library.Songs.Where(s => !included.Contains(s.FilePath)).ToList();
+        ApplyAvailableFilter();
     }
-    private IEnumerable<Song> FilteredAvailableSongs => AvailableSongs.Where(s => string.IsNullOrWhiteSpace(_filter) || $"{s.Title} {s.Author}".Contains(_filter, StringComparison.OrdinalIgnoreCase));
+    private void ApplyAvailableFilter() => FilteredAvailableSongs = AvailableSongs.Where(s =>
+        string.IsNullOrWhiteSpace(_filter) || s.Title.Contains(_filter, StringComparison.OrdinalIgnoreCase) || s.Author.Contains(_filter, StringComparison.OrdinalIgnoreCase)).ToList();
     private static string TrackCount(int count) => $"{count} {(count == 1 ? "track" : "tracks")}";
     protected override async Task OnInitializedAsync()
     {
@@ -117,15 +115,17 @@
         Player.PropertyChanged += PlayerChanged;
         await Library.LoadLibraryAsync();
         await Player.InitializeAsync();
+        UpdateSongLists();
     }
     protected override async Task OnParametersSetAsync()
     {
         _showDetail = CollectionId is not null;
         if (!_showDetail) return;
         _selectedId = CollectionId == "default" ? null : CollectionId;
+        UpdateSongLists();
         await Player.SelectCollectionAsync(_selectedId);
     }
-    private void Refresh() => _ = InvokeAsync(StateHasChanged);
+    private void Refresh() => _ = InvokeAsync(() => { UpdateSongLists(); StateHasChanged(); });
     private void PlayerChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(Player.CurrentSong) or nameof(Player.IsPlaying)) Refresh();
@@ -134,7 +134,7 @@
     private void BackToCollections() { _pageError = ""; Navigation.NavigateTo("/album"); }
     private void OpenCreate() { _creating = true; OpenEditor(); }
     private void OpenAdd() { _creating = false; OpenEditor(); }
-    private void OpenEditor() { _name = ""; _filter = ""; _chosen.Clear(); _editorError = ""; _editing = true; }
+    private void OpenEditor() { _name = ""; _filter = ""; _chosen.Clear(); _editorError = ""; UpdateSongLists(); _editing = true; }
     private void CloseEditor() { if (!_saving) _editing = false; }
     private void Toggle(string path) { if (!_chosen.Add(path)) _chosen.Remove(path); }
     private async Task Save()

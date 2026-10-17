@@ -131,13 +131,16 @@ public sealed class MediaNotificationService : IMediaNotificationService, IDispo
 
     private static global::Android.Graphics.Bitmap? DecodeArtwork(string source)
     {
-        if (string.IsNullOrEmpty(source) || !source.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase))
+        if (string.IsNullOrEmpty(source))
             return null;
         try
         {
-            var separator = source.IndexOf(',');
-            if (separator < 0) return null;
-            var bytes = Convert.FromBase64String(source[(separator + 1)..]);
+            byte[] bytes;
+            if (ArtworkFiles.IsManagedPath(FileSystem.AppDataDirectory, source))
+                bytes = File.ReadAllBytes(source);
+            else if (source.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase) && source.IndexOf(',') is var separator && separator >= 0)
+                bytes = Convert.FromBase64String(source[(separator + 1)..]);
+            else return null;
             using var image = global::Android.Graphics.BitmapFactory.DecodeByteArray(bytes, 0, bytes.Length);
             if (image is null) return null;
             var scale = Math.Min(1, 256.0 / Math.Max(image.Width, image.Height));

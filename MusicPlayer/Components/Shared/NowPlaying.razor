@@ -23,21 +23,23 @@
     @if (_showQueue)
     {
         <div class="queue-backdrop" @onclick="() => _showQueue = false"></div>
-        <section class="queue-sheet" aria-label="Play queue"><div class="section-heading"><div><p class="eyebrow">KEEP THE MOMENT GOING</p><h2>In the queue <span class="count-label">@Player.Playlist.Count</span></h2></div><button class="icon-button" @onclick="() => _showQueue = false" aria-label="Close queue"><AppIcon Name="close" /></button></div><div class="track-list">@foreach (var track in Player.Playlist) { <TrackRow Song="track" Active="@(track.FilePath == Player.CurrentSong?.FilePath)" Playing="Player.IsPlaying" OnPlay="SelectTrack" /> }</div></section>
+        <section class="queue-sheet" aria-label="Play queue"><div class="section-heading"><div><p class="eyebrow">KEEP THE MOMENT GOING</p><h2>In the queue <span class="count-label">@Player.Playlist.Count</span></h2></div><button class="icon-button" @onclick="() => _showQueue = false" aria-label="Close queue"><AppIcon Name="close" /></button></div><div class="track-list virtual-track-list"><Virtualize Items="_queue" Context="track" ItemSize="71" OverscanCount="4"><TrackRow @key="track.FilePath" Song="track" Active="@(track.FilePath == Player.CurrentSong?.FilePath)" Playing="Player.IsPlaying" OnPlay="SelectTrack" /></Virtualize></div></section>
     }
 </section>
 @code {
     [Parameter] public EventCallback Close { get; set; }
     private bool _showQueue;
+    private List<Models.Song> _queue = new();
     private ElementReference _closeButton;
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender) await _closeButton.FocusAsync(preventScroll: true);
     }
-    protected override void OnInitialized() { Player.PropertyChanged += PlayerChanged; Library.LibraryUpdated += LibraryChanged; }
+    protected override void OnInitialized() { _queue = Player.Playlist.ToList(); Player.PropertyChanged += PlayerChanged; Library.LibraryUpdated += LibraryChanged; }
     private void PlayerChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName != nameof(Player.CurrentPosition)) _ = InvokeAsync(StateHasChanged);
+        if (e.PropertyName == nameof(Player.CurrentPosition)) return;
+        _ = InvokeAsync(() => { if (e.PropertyName == nameof(Player.Playlist)) _queue = Player.Playlist.ToList(); StateHasChanged(); });
     }
     private void LibraryChanged() => _ = InvokeAsync(StateHasChanged);
     private async Task SelectTrack(Models.Song song) { await Player.PlaySong(song); _showQueue = false; }

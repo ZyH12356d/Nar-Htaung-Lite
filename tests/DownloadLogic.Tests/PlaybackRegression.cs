@@ -45,7 +45,7 @@ internal static class PlaybackRegression
         await test.Player.InitializeAsync(); // Home can initialize again without taking queue ownership.
         test.CheckFirstCollection();
         Check(test.Audio.Current == native && test.Player.CurrentPosition == 27, "A library refresh restarted collection playback.");
-        var added = new Song { Title = "Downloaded later", FilePath = Path.Combine(test.Files.Root, "later.m4a"), ThumbnailDataUrl = "data:image/png;base64,fixture" };
+        var added = new Song { Title = "Downloaded later", FilePath = Path.Combine(test.Files.Root, "later.m4a"), ThumbnailDataUrl = ArtworkRegression.DataUrl };
         await File.WriteAllTextAsync(added.FilePath, "audio");
         await MainThread.InvokeOnMainThreadAsync(() => test.Library.AddSongAsync(added));
         test.CheckFirstCollection();
@@ -207,7 +207,7 @@ internal static class PlaybackRegression
             FileSystem.AppDataDirectory = test.Files.Root;
             for (var i = 0; i < 5; i++)
             {
-                var song = new Song { Title = $"Song {i}", FilePath = Path.Combine(test.Files.Root, $"song{i}.m4a"), ThumbnailDataUrl = "data:image/png;base64,fixture" };
+                var song = new Song { Title = $"Song {i}", FilePath = Path.Combine(test.Files.Root, $"song{i}.m4a"), ThumbnailDataUrl = ArtworkRegression.DataUrl };
                 await File.WriteAllTextAsync(song.FilePath, "audio");
                 test.Songs.Add(song);
             }

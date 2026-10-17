@@ -7,7 +7,7 @@
             <div class="default-collection-art"><AppIcon Name="download" Size="32" /><span>ALWAYS HERE</span></div>
             <span class="collection-card-copy"><span class="collection-kind">DEFAULT COLLECTION</span><strong>All downloads</strong><span>@TrackCount(Library.Songs.Count)</span></span>
         </a>
-        @foreach (var collection in Library.Collections)
+        @foreach (var collection in Library.Collections.Take(12))
         {
             var tracks = Library.GetCollectionSongs(collection.Id).ToList();
             <a class="collection-card collection-shelf-card" href="@($"/album/{collection.Id}")" aria-label="Open @collection.Name collection" @key="collection.Id">

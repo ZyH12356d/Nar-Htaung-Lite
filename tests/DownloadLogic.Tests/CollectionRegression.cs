@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.Data.Sqlite;
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using MusicPlayer.Models;
@@ -34,7 +35,7 @@ internal static class CollectionRegression
             library.AddSongsToCollectionAsync(first.Id, new[] { songs[0].FilePath }),
             library.AddSongsToCollectionAsync(first.Id, new[] { songs[1].FilePath }));
         Check(library.GetCollectionSongs(first.Id).Count() == 2, "Concurrent additions lost a song.");
-        var added = new Song { Title = "New download", FilePath = Path.Combine(files.Root, "new.m4a"), ThumbnailDataUrl = "data:image/png;base64,fixture" };
+        var added = new Song { Title = "New download", FilePath = Path.Combine(files.Root, "new.m4a"), ThumbnailDataUrl = ArtworkRegression.DataUrl };
         await File.WriteAllTextAsync(added.FilePath, "audio");
         await MainThread.InvokeOnMainThreadAsync(() => library.AddSongAsync(added));
         await library.AddSongToCollectionsAsync(added, new[] { first.Id, second.Id, "deleted-while-downloading" });
@@ -61,9 +62,13 @@ internal static class CollectionRegression
             catch (ArgumentException) { }
         }
         Check(library.Collections.Count == 1, "Invalid collection creation changed the library.");
-        Directory.CreateDirectory(Path.Combine(files.Root, "collections.json.tmp"));
+        using var connection = new SqliteConnection($"Data Source={Path.Combine(files.Root, "library.db")};Pooling=False");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "CREATE TRIGGER FailCollection BEFORE INSERT ON Collections BEGIN SELECT RAISE(ABORT,'Simulated disk failure'); END";
+        command.ExecuteNonQuery();
         try { await library.CreateCollectionAsync("Cannot save", Array.Empty<string>()); throw new Exception("The failed write was ignored."); }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        catch (SqliteException) { }
         Check(library.Collections.Count == 1, "A failed write published an unsaved collection.");
     }
 
@@ -71,9 +76,8 @@ internal static class CollectionRegression
     {
         using var files = new DownloadCase();
         using var http = Client();
-        await LibraryAsync(files, http);
+        await LibraryAsync(files, http, "{broken");
         var path = Path.Combine(files.Root, "collections.json");
-        await File.WriteAllTextAsync(path, "{broken");
         var library = new LibraryService(Covers(http));
         await library.LoadLibraryAsync();
         await library.RefreshArtworkAsync();
@@ -83,12 +87,13 @@ internal static class CollectionRegression
         Check(await File.ReadAllTextAsync(path) == "{broken", "The saved collections file was destroyed.");
     }
 
-    private static async Task<LibraryService> LibraryAsync(DownloadCase files, HttpClient http)
+    private static async Task<LibraryService> LibraryAsync(DownloadCase files, HttpClient http, string? legacyCollections = null)
     {
         FileSystem.AppDataDirectory = files.Root;
-        var songs = Enumerable.Range(1, 2).Select(i => new Song { Title = $"Track {i}", Author = "Artist", FilePath = Path.Combine(files.Root, $"track{i}.m4a"), ThumbnailDataUrl = "data:image/png;base64,fixture" }).ToList();
+        var songs = Enumerable.Range(1, 2).Select(i => new Song { Title = $"Track {i}", Author = "Artist", FilePath = Path.Combine(files.Root, $"track{i}.m4a"), ThumbnailDataUrl = ArtworkRegression.DataUrl }).ToList();
         foreach (var song in songs) await File.WriteAllTextAsync(song.FilePath, "audio");
         await File.WriteAllTextAsync(Path.Combine(files.Root, "songs_cache.json"), JsonSerializer.Serialize(songs));
+        if (legacyCollections is not null) await File.WriteAllTextAsync(Path.Combine(files.Root, "collections.json"), legacyCollections);
         var library = new LibraryService(Covers(http));
         await library.LoadLibraryAsync();
         await library.RefreshArtworkAsync();

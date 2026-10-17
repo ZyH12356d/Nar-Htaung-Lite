@@ -3,6 +3,14 @@ using MusicPlayer.Services;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("SQLite migration preserves source IDs, collections, covers, and legacy recovery copies", DatabaseRegression.MigrationAsync),
+    ("Existing legacy cover files migrate without network access", DatabaseRegression.ExistingCoverMigrationAsync),
+    ("Interrupted migrations roll back and can be retried", DatabaseRegression.RollbackMigrationAsync),
+    ("Failed or interrupted deletions preserve audio and collection membership", DatabaseRegression.WriteRollbackAsync),
+    ("Blocked SQLite writes leave the UI responsive and publish only after commit", DatabaseRegression.UiThreadAsync),
+    ("Artwork repairs do not replace the playback queue", DatabaseRegression.ArtworkDoesNotReplaceQueueAsync),
+    ("Offline cover serving exposes only managed images", DatabaseRegression.CoverServingAsync),
+    ("100, 500, and 1000-song catalogs load without retaining image payloads", DatabaseRegression.LargeLibrariesAsync),
     ("Successful audio is published only after tagging", SuccessfulDownload),
     ("Failed tagging preserves the original audio", FailedTagging),
     ("Interrupted transfer restarts without partial bytes", InterruptedTransfer),

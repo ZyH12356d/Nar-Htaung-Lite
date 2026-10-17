@@ -2127,3 +2127,8 @@ body:has(.collection-dialog[open]) {
         gap:12px
     }
 }
+
+/* Virtualized rows use a stable height so scroll position and spacer measurements agree. */
+.virtual-track-list { gap:0; }
+.virtual-track-list > .track-row { height:71px; flex-shrink:0; }
+.song-picker > .picker-row { height:64px; min-height:64px; }

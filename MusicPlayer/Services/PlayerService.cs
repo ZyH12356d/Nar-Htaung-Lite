@@ -16,6 +16,7 @@ public class PlayerService : INotifyPropertyChanged, IDisposable
     private IAudioPlayer? _audioPlayer;
     private Stream? _audioStream;
     private IReadOnlyList<Song> _playlist = Array.Empty<Song>();
+    private Dictionary<string, int> _songIndex = new();
     private Song? _currentSong;
     private bool _isPlaying, _isShuffle, _isRepeat, _isPlayerExpanded, _initialized, _disposed;
     private double _currentPosition, _duration, _resumePosition;
@@ -26,7 +27,8 @@ public class PlayerService : INotifyPropertyChanged, IDisposable
         _audioManager = audioManager;
         _notificationService = notificationService;
         _library = library;
-        _library.LibraryUpdated += LibraryChanged;
+        _library.QueueChanged += LibraryChanged;
+        _library.ArtworkUpdated += ArtworkChanged;
         _progressTimer.Elapsed += (_, _) => MainThread.BeginInvokeOnMainThread(UpdateProgress);
     }
 
@@ -82,7 +84,7 @@ public class PlayerService : INotifyPropertyChanged, IDisposable
         ActiveCollectionId = collectionId;
         IsShuffle = shuffle;
         ReplaceQueue();
-        var selected = song is not null ? _playlist.FirstOrDefault(s => s.FilePath == song.FilePath)
+        var selected = song is not null ? FindMember(song.FilePath)
             : _playlist.Count == 0 ? null : _playlist[shuffle ? Random.Shared.Next(_playlist.Count) : 0];
         if (selected is null) { ReconcileCurrentSong(selectFirst: true); return; }
         PlayCore(selected);
@@ -95,10 +97,20 @@ public class PlayerService : INotifyPropertyChanged, IDisposable
         ReconcileCurrentSong(selectFirst: false);
     });
 
+    private void ArtworkChanged(Song song) => MainThread.BeginInvokeOnMainThread(() =>
+    {
+        if (_disposed || CurrentSong?.FilePath != song.FilePath) return;
+        _notificationService.UpdateMetadata(song.Title, song.Author, song.NotificationArtwork, Duration);
+        _notificationService.UpdatePlaybackStatus(IsPlaying, CurrentPosition);
+    });
+
+    private Song? FindMember(string? path) => path is not null && _songIndex.TryGetValue(path, out var index) ? _playlist[index] : null;
+
     private void ReplaceQueue()
     {
         _playlist = Array.AsReadOnly(_library.GetCollectionSongs(ActiveCollectionId)
-            .Where(s => File.Exists(s.FilePath)).DistinctBy(s => s.FilePath).ToArray());
+            .DistinctBy(s => s.FilePath).ToArray());
+        _songIndex = _playlist.Select((song, index) => (song, index)).ToDictionary(x => x.song.FilePath, x => x.index);
         Preferences.Set("PlaybackCollectionId", ActiveCollectionId ?? "");
         OnPropertyChanged(nameof(Playlist));
         OnPropertyChanged(nameof(ActiveCollectionId));
@@ -107,7 +119,7 @@ public class PlayerService : INotifyPropertyChanged, IDisposable
 
     private void ReconcileCurrentSong(bool selectFirst)
     {
-        var retained = _playlist.FirstOrDefault(s => s.FilePath == CurrentSong?.FilePath);
+        var retained = FindMember(CurrentSong?.FilePath);
         if (retained is not null)
         {
             if (!ReferenceEquals(retained, CurrentSong)) CurrentSong = retained;
@@ -128,7 +140,7 @@ public class PlayerService : INotifyPropertyChanged, IDisposable
             if (next is null) _notificationService.Clear();
             else
             {
-                _notificationService.UpdateMetadata(next.Title, next.Author, next.ThumbnailDataUrl, 0);
+                _notificationService.UpdateMetadata(next.Title, next.Author, next.NotificationArtwork, 0);
                 _notificationService.UpdatePlaybackStatus(false, 0);
             }
             if (next is null) IsPlayerExpanded = false;
@@ -138,7 +150,7 @@ public class PlayerService : INotifyPropertyChanged, IDisposable
     // Queue rows and skip controls may only play members of the active collection.
     public Task PlaySong(Song song) => RunAsync(() =>
     {
-        var member = _playlist.FirstOrDefault(s => s.FilePath == song.FilePath);
+        var member = FindMember(song.FilePath);
         if (member is not null) PlayCore(member);
     });
 
@@ -162,7 +174,7 @@ public class PlayerService : INotifyPropertyChanged, IDisposable
             _audioPlayer.Play();
             IsPlaying = true;
             _progressTimer.Start();
-            _notificationService.UpdateMetadata(song.Title, song.Author, song.ThumbnailDataUrl, Duration);
+            _notificationService.UpdateMetadata(song.Title, song.Author, song.NotificationArtwork, Duration);
             _notificationService.UpdatePlaybackStatus(true, CurrentPosition);
         }
         catch (Exception ex)
@@ -219,7 +231,7 @@ public class PlayerService : INotifyPropertyChanged, IDisposable
     {
         if (_audioPlayer is null)
         {
-            if (CurrentSong is { } song && _playlist.Any(s => s.FilePath == song.FilePath)) PlayCore(song, _resumePosition);
+            if (CurrentSong is { } song && _songIndex.ContainsKey(song.FilePath)) PlayCore(song, _resumePosition);
             return;
         }
         if (IsPlaying) { _audioPlayer.Pause(); _progressTimer.Stop(); IsPlaying = false; }
@@ -240,11 +252,12 @@ public class PlayerService : INotifyPropertyChanged, IDisposable
     private void NextCore()
     {
         if (_playlist.Count == 0) return;
-        var index = _playlist.ToList().FindIndex(s => s.FilePath == CurrentSong?.FilePath);
+        var index = CurrentSong is not null && _songIndex.TryGetValue(CurrentSong.FilePath, out var current) ? current : -1;
         if (IsShuffle && _playlist.Count > 1)
         {
-            var choices = _playlist.Where(s => s.FilePath != CurrentSong?.FilePath).ToArray();
-            PlayCore(choices[Random.Shared.Next(choices.Length)]);
+            var choice = Random.Shared.Next(_playlist.Count - (index >= 0 ? 1 : 0));
+            if (index >= 0 && choice >= index) choice++;
+            PlayCore(_playlist[choice]);
         }
         else PlayCore(_playlist[(index + 1) % _playlist.Count]);
     }
@@ -252,14 +265,14 @@ public class PlayerService : INotifyPropertyChanged, IDisposable
     public Task PlayPrevious() => RunAsync(() =>
     {
         if (_playlist.Count == 0) return;
-        var index = _playlist.ToList().FindIndex(s => s.FilePath == CurrentSong?.FilePath);
+        var index = CurrentSong is not null && _songIndex.TryGetValue(CurrentSong.FilePath, out var current) ? current : -1;
         PlayCore(_playlist[index < 0 ? 0 : (index - 1 + _playlist.Count) % _playlist.Count]);
     });
 
     public Task HandleTrackEnded() => RunAsync(TrackEndedCore);
     private void TrackEndedCore()
     {
-        if (IsRepeat && CurrentSong is { } song && _playlist.Any(s => s.FilePath == song.FilePath)) PlayCore(song);
+        if (IsRepeat && CurrentSong is { } song && _songIndex.ContainsKey(song.FilePath)) PlayCore(song);
         else NextCore();
     }
 
@@ -267,7 +280,8 @@ public class PlayerService : INotifyPropertyChanged, IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        _library.LibraryUpdated -= LibraryChanged;
+        _library.QueueChanged -= LibraryChanged;
+        _library.ArtworkUpdated -= ArtworkChanged;
         StopNativePlayer();
         _notificationService.Clear();
         _progressTimer.Dispose();

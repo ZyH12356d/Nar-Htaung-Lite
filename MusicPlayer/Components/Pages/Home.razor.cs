@@ -10,20 +10,28 @@ public partial class Home : IDisposable
     [Inject] private LibraryService LibraryService { get; set; } = default!;
     private bool _loading = true;
     private string _filter = string.Empty;
+    private string Filter
+    {
+        get => _filter;
+        set { _filter = value; ApplyFilter(); }
+    }
+    private string? _libraryError;
+    private List<Song> FilteredSongs = new();
+    private void ApplyFilter() => FilteredSongs = LibraryService.Songs.Where(s =>
+        s.Title.Contains(_filter, StringComparison.OrdinalIgnoreCase) || s.Author.Contains(_filter, StringComparison.OrdinalIgnoreCase)).ToList();
     private Song? _songToDelete;
-    private IEnumerable<Song> FilteredSongs => LibraryService.Songs.Where(s =>
-        s.Title.Contains(_filter, StringComparison.OrdinalIgnoreCase) || s.Author.Contains(_filter, StringComparison.OrdinalIgnoreCase));
-
     protected override async Task OnInitializedAsync()
     {
         LibraryService.LibraryUpdated += LibraryChanged;
         PlayerService.PropertyChanged += PlayerChanged;
         await LibraryService.LoadLibraryAsync();
         await PlayerService.InitializeAsync();
+        ApplyFilter();
         _loading = false;
     }
     private void LibraryChanged() => _ = InvokeAsync(() =>
     {
+        ApplyFilter();
         StateHasChanged();
     });
     private void PlayerChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -45,7 +53,8 @@ public partial class Home : IDisposable
     private void CancelDelete() => _songToDelete = null;
     private async Task ConfirmDelete()
     {
-        if (_songToDelete is { } song) await LibraryService.DeleteSongAsync(song);
+        try { if (_songToDelete is { } song) await LibraryService.DeleteSongAsync(song); }
+        catch (Exception ex) { _libraryError = $"Could not delete this track. {ex.Message}"; }
         _songToDelete = null;
     }
     public void Dispose()

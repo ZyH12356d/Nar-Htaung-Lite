@@ -218,7 +218,6 @@ namespace MusicPlayer.Services
 
                 if (await artworkTask is { } cover)
                 {
-                    song.ThumbnailDataUrl = cover.DataUrl;
                     try { await _libraryService.CacheArtworkAsync(song, cover); }
                     catch (Exception ex) { _logger.LogWarning(ex, "Could not cache artwork for {VideoId}.", item.VideoId); }
                 }

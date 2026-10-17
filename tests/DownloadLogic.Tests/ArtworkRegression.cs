@@ -7,6 +7,7 @@ using MusicPlayer.Services;
 
 internal static class ArtworkRegression
 {
+    public const string DataUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j7xkAAAAASUVORK5CYII=";
     private static readonly byte[] Png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j7xkAAAAASUVORK5CYII=");
 
     public static async Task FallbackAsync()
@@ -73,7 +74,7 @@ internal static class ArtworkRegression
         var reloaded = new LibraryService(service);
         await reloaded.LoadLibraryAsync();
         await reloaded.RefreshArtworkAsync();
-        Check(reloaded.Songs.Single().ThumbnailDataUrl == song.ThumbnailDataUrl && File.Exists(song.ThumbnailPath), "Artwork was lost when the library reloaded.");
+        Check(reloaded.Songs.Single().ThumbnailDataUrl.Length == 0 && reloaded.Songs.Single().ThumbnailPath == song.ThumbnailPath && File.Exists(song.ThumbnailPath), "Artwork was lost when the library reloaded.");
     }
 
     public static async Task RepairAsync()
@@ -88,9 +89,11 @@ internal static class ArtworkRegression
         await library.LoadLibraryAsync();
         await library.RefreshArtworkAsync();
         var song = library.Songs.Single();
-        Check(song.VideoId == "jNQXAC9IVRw" && song.ThumbnailDataUrl.StartsWith("data:image/png;base64,"), "An older download's artwork was not repaired.");
-        var saved = await File.ReadAllTextAsync(Path.Combine(files.Root, "songs_cache.json"));
-        Check(saved.Contains("ThumbnailDataUrl") && saved.Contains("image/png"), "Repaired artwork was not persisted.");
+        Check(song.VideoId == "jNQXAC9IVRw" && song.ThumbnailDataUrl.Length == 0 && File.Exists(song.ThumbnailPath), "An older download's artwork was not repaired.");
+        var reloaded = new LibraryService(Service(http));
+        await reloaded.LoadLibraryAsync();
+        await reloaded.RefreshArtworkAsync();
+        Check(reloaded.Songs.Single().ThumbnailPath == song.ThumbnailPath, "Repaired artwork was not persisted in SQLite.");
     }
 
     private static CoverArtService Service(HttpClient http) => new(http, NullLogger<CoverArtService>.Instance);

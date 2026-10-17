@@ -32,3 +32,8 @@ while the library/player initializes and disappears as soon as initialization co
 
 The /preview/search-results route renders fixture search results, and /preview/review
 shows three phone screens together for visual review.
+
+Large-library previews are available at `/preview/library/100`, `/preview/library/500`,
+and `/preview/library/1000`. These use synthetic songs with two collections. Check that the
+track DOM contains only a small window of rows, the last track remains reachable, filtering
+updates the virtual list, and the picker and player queue remain usable.

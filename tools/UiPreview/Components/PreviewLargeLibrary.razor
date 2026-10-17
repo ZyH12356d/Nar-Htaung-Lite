@@ -1,0 +1,9 @@
+@page "/preview/library/{Count:int}"
+@inject MusicPlayer.Services.LibraryService Library
+
+<MusicPlayer.Components.Pages.Home />
+
+@code {
+    [Parameter] public int Count { get; set; } = 1000;
+    protected override void OnInitialized() => Library.UseLargeFixture(Count);
+}

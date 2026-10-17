@@ -20,6 +20,19 @@ public class LibraryService
         Collections.Add(new MusicCollection { Id = "travel", Name = "On the move", SongPaths = Songs.Skip(4).Take(2).Select(s => s.FilePath).ToList() });
         Collections.Add(new MusicCollection { Id = "empty", Name = "A new beginning", SongPaths = new() });
     }
+    public void UseLargeFixture(int count)
+    {
+        count = Math.Clamp(count, 1, 5000);
+        Songs.Clear();
+        var covers = Enumerable.Range(0, 5).Select(Fixtures.Art).ToArray();
+        for (var i = 0; i < count; i++)
+            Songs.Add(new Song { Title = $"Stress track {i + 1:0000}", Author = $"Artist {i % 25 + 1}", VideoId = $"TEST{i:0000000}",
+                FilePath = $"/preview/stress-{i}.m4a", ThumbnailDataUrl = covers[i % covers.Length] });
+        Collections.Clear();
+        Collections.Add(new MusicCollection { Id = "large", Name = "Large collection", SongPaths = Songs.Take(count / 2).Select(s => s.FilePath).ToList() });
+        Collections.Add(new MusicCollection { Id = "small", Name = "Every tenth", SongPaths = Songs.Where((_, i) => i % 10 == 0).Select(s => s.FilePath).ToList() });
+        LibraryUpdated?.Invoke();
+    }
     public Task LoadLibraryAsync() => Task.CompletedTask;
     public IEnumerable<Song> GetCollectionSongs(string? id) => id is null ? Songs : Songs.Where(s => Collections.FirstOrDefault(c => c.Id == id)?.SongPaths.Contains(s.FilePath) == true);
     public Task<MusicCollection> CreateCollectionAsync(string name, IEnumerable<string> paths)

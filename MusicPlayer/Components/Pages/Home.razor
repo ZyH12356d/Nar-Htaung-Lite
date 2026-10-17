@@ -7,6 +7,7 @@
         <div><p class="eyebrow">YOUR PERSONAL SOUNDTRACK</p><h1>Music for<br /><span class="accent-text">your moments.</span></h1><p class="page-description">Your favorites. Saved here. Always with you.</p></div>
         <div class="hero-record" aria-hidden="true"><div><AppIcon Name="wave" Size="36" /></div></div>
     </div>
+    @if (!string.IsNullOrEmpty(_libraryError)) { <div class="notice notice-error" role="alert">@_libraryError</div> }
     @if (_loading)
     {
         <div class="loading-state" role="status"><span class="spinner"></span>Opening your library…</div>
@@ -33,12 +34,11 @@
         </section>
         <section aria-labelledby="tracks-title">
             <div class="section-heading"><h2 id="tracks-title">All tracks <span class="count-label">@LibraryService.Songs.Count</span></h2></div>
-            <label class="search-field library-filter"><AppIcon Name="search" Size="19" /><input type="search" aria-label="Filter your library" placeholder="Find something in your library" @bind="_filter" @bind:event="oninput" /></label>
-            <div class="track-list">
-                @foreach (var song in FilteredSongs)
-                {
+            <label class="search-field library-filter"><AppIcon Name="search" Size="19" /><input type="search" aria-label="Filter your library" placeholder="Find something in your library" @bind="Filter" @bind:event="oninput" /></label>
+            <div class="track-list virtual-track-list">
+                <Virtualize Items="FilteredSongs" Context="song" ItemSize="71" OverscanCount="4">
                     <TrackRow @key="song.FilePath" Song="song" Active="@(PlayerService.CurrentSong?.FilePath == song.FilePath)" Playing="PlayerService.IsPlaying" OnPlay="PlayAndExpand" OnDelete="AskDelete" />
-                }
+                </Virtualize>
             </div>
             @if (!FilteredSongs.Any()) { <p class="inline-empty">No tracks match “@_filter”.</p> }
         </section>

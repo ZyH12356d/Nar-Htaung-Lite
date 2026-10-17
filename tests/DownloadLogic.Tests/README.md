@@ -40,3 +40,12 @@ On an Android device, expand the notification and check Previous, Pause/Play, an
 a custom collection and with All downloads. Repeat with the app in the background and the
 screen locked. A paused notification should remain available for resuming, and emptying the
 active collection should remove its notification.
+
+SQLite checks use the actual native database, not an in-memory database substitute. They cover
+one-time migration with legacy recovery copies, YouTube ID preservation and filename recovery,
+transaction rollback and restart, blocked writes without blocking the UI, deletion recovery,
+cover-serving boundaries, and synthetic catalogs of 100, 500 and 1,000 tracks. Image bytes are
+excluded from persisted records and reloaded catalog objects. The tests use a small desktop
+image processor substitute; Android builds exercise the native resizing code.
+
+Storage and manual device verification are described in [LibraryStorage.md](../../docs/LibraryStorage.md).

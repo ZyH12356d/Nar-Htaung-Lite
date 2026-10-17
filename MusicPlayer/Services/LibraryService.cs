@@ -1,134 +1,109 @@
 using System.Collections.ObjectModel;
-using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
-using System.Text.RegularExpressions;
 using MusicPlayer.Models;
 
 namespace MusicPlayer.Services;
 
-public partial class LibraryService(CoverArtService coverArt)
+public partial class LibraryService
 {
-    private readonly string _cacheFilePath = Path.Combine(FileSystem.AppDataDirectory, "songs_cache.json");
-    private readonly SemaphoreSlim _saveLock = new(1, 1);
-    private Task? _loadTask;
-    private Task? _artworkRepairTask;
+    private readonly CoverArtService _coverArt;
+    private readonly string _root;
+    private readonly LibraryDatabase _database;
+    private readonly SemaphoreSlim _mutationLock = new(1, 1);
+    private readonly object _initializationLock = new();
+    private Task? _loadTask, _artworkRepairTask;
 
+    public LibraryService(CoverArtService coverArt)
+    {
+        _coverArt = coverArt;
+        _root = FileSystem.AppDataDirectory;
+        _database = new LibraryDatabase(_root);
+    }
+
+    // Lightweight metadata only. Artwork bytes are served from disk when a visible image requests them.
     public ObservableCollection<Song> Songs { get; } = new();
     public event Action? LibraryUpdated;
+    public event Action? QueueChanged;
+    public event Action<Song>? ArtworkUpdated;
 
-    public Task LoadLibraryAsync() => _loadTask ??= LoadCoreAsync();
+    public Task LoadLibraryAsync()
+    {
+        lock (_initializationLock) return _loadTask ??= LoadCoreAsync();
+    }
 
     private async Task LoadCoreAsync()
     {
-        List<Song>? songs = null;
-        try
-        {
-            if (File.Exists(_cacheFilePath))
-                songs = JsonSerializer.Deserialize<List<Song>>(await File.ReadAllTextAsync(_cacheFilePath));
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Could not load the music library: {ex.Message}");
-        }
-
-        songs ??= await Task.Run(ScanDirectory);
+        var catalog = await _database.LoadAsync();
         await MainThread.InvokeOnMainThreadAsync(() =>
         {
             Songs.Clear();
-            foreach (var song in songs.Where(s => File.Exists(s.FilePath)))
-                Songs.Add(song);
+            foreach (var song in catalog.Songs) Songs.Add(song);
+            PublishCollections(catalog.Collections);
+            CollectionError = catalog.CollectionError;
             LibraryUpdated?.Invoke();
         });
-        await SaveCacheAsync();
-
-        await LoadCollectionsAsync();
-
-        // Display the library immediately; repair older missing images in the background.
         _ = RefreshArtworkAsync();
-    }
-
-    private static List<Song> ScanDirectory()
-    {
-        return Directory.EnumerateFiles(FileSystem.AppDataDirectory)
-            .Where(f => Path.GetExtension(f).ToLowerInvariant() is ".mp3" or ".m4a" or ".webm")
-            .OrderByDescending(File.GetLastWriteTimeUtc)
-            .Select(path =>
-            {
-                var song = new Song { FilePath = path, Title = Path.GetFileNameWithoutExtension(path), Author = "Unknown artist" };
-                try
-                {
-                    using var file = TagLib.File.Create(path);
-                    song.Title = string.IsNullOrWhiteSpace(file.Tag.Title) ? song.Title : file.Tag.Title;
-                    song.Author = file.Tag.FirstPerformer ?? file.Tag.FirstAlbumArtist ?? song.Author;
-                    var picture = file.Tag.Pictures.FirstOrDefault();
-                    if (picture is not null && CoverArtService.FromBytes(picture.Data.Data) is { } embedded)
-                        song.ThumbnailDataUrl = embedded.DataUrl;
-                }
-                catch (Exception ex) { Console.WriteLine($"Could not read audio tags: {ex.Message}"); }
-                return song;
-            }).ToList();
     }
 
     public async Task CacheArtworkAsync(Song song, CoverArt artwork)
     {
-        var directory = Path.Combine(FileSystem.AppDataDirectory, "artwork");
-        Directory.CreateDirectory(directory);
-        var key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(song.FilePath)));
-        var extension = artwork.MimeType switch { "image/png" => ".png", "image/webp" => ".webp", "image/gif" => ".gif", _ => ".jpg" };
-        var path = Path.Combine(directory, key + extension);
-        await File.WriteAllBytesAsync(path, artwork.Bytes);
-        song.ThumbnailPath = path;
-        song.ThumbnailDataUrl = artwork.DataUrl;
+        song.ThumbnailPath = await ArtworkFiles.WriteAsync(_root, song, artwork);
+        song.ThumbnailDataUrl = "";
     }
 
-    public Task RefreshArtworkAsync() => _artworkRepairTask is { IsCompleted: false }
-        ? _artworkRepairTask : _artworkRepairTask = RepairArtworkAsync();
+    public Task RefreshArtworkAsync()
+    {
+        lock (_initializationLock)
+            return _artworkRepairTask is { IsCompleted: false } ? _artworkRepairTask : _artworkRepairTask = RepairArtworkAsync();
+    }
 
     private async Task RepairArtworkAsync()
     {
         try
         {
             var snapshot = await MainThread.InvokeOnMainThreadAsync(() => Songs.ToList());
-            foreach (var song in snapshot.Where(s => string.IsNullOrWhiteSpace(s.ThumbnailDataUrl)))
+            // Checking the local cache stays off the UI thread. Existing covers aren't loaded into memory.
+            var missing = await Task.Run(() => snapshot.Where(s =>
+                !ArtworkFiles.IsManagedPath(_root, s.ThumbnailPath) || !File.Exists(s.ThumbnailPath)).ToList());
+            var pendingUiUpdate = 0;
+            foreach (var song in missing)
             {
-                // Newer downloads encode the video ID immediately before their GUID.
-                if (!CoverArtService.IsVideoId(song.VideoId))
-                {
-                    var match = Regex.Match(Path.GetFileNameWithoutExtension(song.FilePath), @"-([A-Za-z0-9_-]{11})-[a-fA-F0-9]{32}$");
-                    if (match.Success)
-                        song.VideoId = match.Groups[1].Value;
-                }
-
                 CoverArt? artwork = await Task.Run(() =>
                 {
                     try
                     {
-                        if (!string.IsNullOrEmpty(song.ThumbnailPath) && File.Exists(song.ThumbnailPath) &&
-                            CoverArtService.FromBytes(File.ReadAllBytes(song.ThumbnailPath)) is { } cached)
-                            return cached;
                         using var audio = TagLib.File.Create(song.FilePath);
                         var picture = audio.Tag.Pictures.FirstOrDefault();
                         return picture is null ? null : CoverArtService.FromBytes(picture.Data.Data);
                     }
                     catch { return null; }
                 });
+                artwork ??= await _coverArt.GetAsync(song.VideoId, new[] { song.ThumbnailUrl });
+                if (artwork is null) continue;
 
-                artwork ??= await coverArt.GetAsync(song.VideoId, new[] { song.ThumbnailUrl });
-                if (artwork is null)
-                    continue;
-                // A user might delete a song while its artwork request is in flight.
-                if (!File.Exists(song.FilePath))
-                    continue;
-
-                await CacheArtworkAsync(song, artwork);
-                await MainThread.InvokeOnMainThreadAsync(() =>
+                await _mutationLock.WaitAsync();
+                try
                 {
-                    if (Songs.Contains(song))
-                        LibraryUpdated?.Invoke();
-                });
+                    if (!await MainThread.InvokeOnMainThreadAsync(() => Songs.Contains(song)) ||
+                        !await Task.Run(() => File.Exists(song.FilePath))) continue;
+                    var repaired = new Song { Id = song.Id, FilePath = song.FilePath, VideoId = song.VideoId };
+                    await CacheArtworkAsync(repaired, artwork);
+                    if (!await _database.UpdateArtworkAsync(repaired)) continue;
+                    await MainThread.InvokeOnMainThreadAsync(() =>
+                    {
+                        song.ThumbnailPath = repaired.ThumbnailPath;
+                        song.ThumbnailRevision = repaired.ThumbnailRevision;
+                        ArtworkUpdated?.Invoke(song);
+                    });
+                    if (++pendingUiUpdate >= 16)
+                    {
+                        await MainThread.InvokeOnMainThreadAsync(() => LibraryUpdated?.Invoke());
+                        pendingUiUpdate = 0;
+                    }
+                }
+                catch (Exception ex) { Console.WriteLine($"Could not repair cover for {song.Title}: {ex.Message}"); }
+                finally { _mutationLock.Release(); }
             }
-            await SaveCacheAsync();
+            if (pendingUiUpdate > 0) await MainThread.InvokeOnMainThreadAsync(() => LibraryUpdated?.Invoke());
         }
         catch (Exception ex) { Console.WriteLine($"Could not repair cover artwork: {ex.Message}"); }
     }
@@ -136,44 +111,65 @@ public partial class LibraryService(CoverArtService coverArt)
     public async Task AddSongAsync(Song song)
     {
         await LoadLibraryAsync();
-        var existing = Songs.FirstOrDefault(s => s.FilePath == song.FilePath);
-        if (existing is not null) Songs.Remove(existing);
-        Songs.Insert(0, song);
-        LibraryUpdated?.Invoke();
-        await SaveCacheAsync();
+        await _mutationLock.WaitAsync();
+        try
+        {
+            await ArtworkFiles.PrepareLegacyAsync(_root, song);
+            song.ThumbnailDataUrl = "";
+            if (song.AddedAtUtcTicks <= 0) song.AddedAtUtcTicks = DateTime.UtcNow.Ticks;
+            await _database.SaveSongAsync(song);
+            await MainThread.InvokeOnMainThreadAsync(() =>
+            {
+                var existing = Songs.FirstOrDefault(s => s.FilePath == song.FilePath);
+                if (existing is not null) Songs.Remove(existing);
+                Songs.Insert(0, song);
+                RebuildCollectionIndex();
+                QueueChanged?.Invoke();
+                LibraryUpdated?.Invoke();
+            });
+        }
+        finally { _mutationLock.Release(); }
     }
 
     public async Task DeleteSongAsync(Song song)
     {
+        await LoadLibraryAsync();
+        await _mutationLock.WaitAsync();
+        var staged = song.FilePath + ".delete-" + Guid.NewGuid().ToString("N");
+        var moved = false;
         try
         {
-            if (File.Exists(song.FilePath))
-                File.Delete(song.FilePath);
-            var artworkDirectory = Path.GetFullPath(Path.Combine(FileSystem.AppDataDirectory, "artwork")) + Path.DirectorySeparatorChar;
-            if (!string.IsNullOrEmpty(song.ThumbnailPath) &&
-                Path.GetFullPath(song.ThumbnailPath).StartsWith(artworkDirectory, StringComparison.OrdinalIgnoreCase))
-                File.Delete(song.ThumbnailPath);
+            // Stage the file so a failed database transaction can restore it.
+            moved = await Task.Run(() =>
+            {
+                if (!File.Exists(song.FilePath)) return false;
+                File.Move(song.FilePath, staged);
+                return true;
+            });
+            try { await _database.DeleteSongAsync(song.Id); }
+            catch
+            {
+                if (moved) await Task.Run(() => File.Move(staged, song.FilePath));
+                throw;
+            }
+            await MainThread.InvokeOnMainThreadAsync(() =>
+            {
+                Songs.Remove(song);
+                foreach (var collection in Collections) collection.SongPaths.Remove(song.FilePath);
+                RebuildCollectionIndex();
+                QueueChanged?.Invoke();
+                LibraryUpdated?.Invoke();
+            });
+            await Task.Run(() =>
+            {
+                try
+                {
+                    if (moved) File.Delete(staged);
+                    if (ArtworkFiles.IsManagedPath(_root, song.ThumbnailPath)) File.Delete(song.ThumbnailPath);
+                }
+                catch (IOException ex) { Console.WriteLine($"Could not remove a deleted track's files: {ex.Message}"); }
+            });
         }
-        catch (Exception ex) { Console.WriteLine($"Could not delete the song: {ex.Message}"); return; }
-
-        Songs.Remove(song);
-        LibraryUpdated?.Invoke();
-        await SaveCacheAsync();
-        try { await UpdateCollectionsAsync(list => { foreach (var collection in list) collection.SongPaths.Remove(song.FilePath); }); }
-        catch (Exception ex) { Console.WriteLine($"Could not update collections after deleting a song: {ex.Message}"); }
-    }
-
-    private async Task SaveCacheAsync()
-    {
-        await _saveLock.WaitAsync();
-        try
-        {
-            var json = await MainThread.InvokeOnMainThreadAsync(() => JsonSerializer.Serialize(Songs.ToList()));
-            var temporary = _cacheFilePath + ".tmp";
-            await File.WriteAllTextAsync(temporary, json);
-            File.Move(temporary, _cacheFilePath, overwrite: true);
-        }
-        catch (Exception ex) { Console.WriteLine($"Could not save the music library: {ex.Message}"); }
-        finally { _saveLock.Release(); }
+        finally { _mutationLock.Release(); }
     }
 }
