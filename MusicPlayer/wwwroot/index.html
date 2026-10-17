@@ -15,10 +15,22 @@
         try { setTheme(localStorage.getItem('theme') || 'dark'); } catch {}
     </script>
     <link rel="stylesheet" href="app.css" />
-    <link rel="icon" href="data:," />
+    <link rel="preload" as="image" href="logo/nar-htaung.png" />
+    <link rel="icon" type="image/png" href="logo/nar-htaung.png" />
 </head>
 <body>
-    <div id="app"><div class="loading-state" role="status"><span class="spinner"></span>Opening your music…</div></div>
+    <div id="app">
+        <section class="startup-screen" role="status" aria-live="polite" aria-label="Opening Nar Htaung Lite">
+            <div class="startup-content">
+                <img class="startup-logo" src="logo/nar-htaung.png" width="144" height="144" alt="" fetchpriority="high" />
+                <h1>Nar Htaung<span> LITE</span></h1>
+                <p class="startup-tagline">Your music. Always with you.</p>
+                <div class="startup-wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+                <p class="startup-status">Opening your music…</p>
+            </div>
+            <p class="startup-footer">YOUR OFFLINE SOUNDTRACK</p>
+        </section>
+    </div>
     <div id="blazor-error-ui" data-nosnippet>Something interrupted the app.<a href="." class="reload">Reload</a><span class="dismiss" aria-label="Dismiss">×</span></div>
     <script src="_framework/blazor.webview.js" autostart="false"></script>
 </body>

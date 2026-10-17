@@ -1,0 +1,21 @@
+<section class="startup-screen" role="@(string.IsNullOrEmpty(ErrorMessage) ? "status" : "alert")" aria-live="polite" aria-label="Opening Nar Htaung Lite">
+    <div class="startup-content">
+        <img class="startup-logo" src="logo/nar-htaung.png" width="144" height="144" alt="" fetchpriority="high" />
+        <h1>Nar Htaung<span> LITE</span></h1>
+        <p class="startup-tagline">Your music. Always with you.</p>
+        @if (string.IsNullOrEmpty(ErrorMessage))
+        {
+            <div class="startup-wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+            <p class="startup-status">Opening your music…</p>
+        }
+        else
+        {
+            <p class="startup-status startup-error">@ErrorMessage</p>
+        }
+    </div>
+    <p class="startup-footer">YOUR OFFLINE SOUNDTRACK</p>
+</section>
+
+@code {
+    [Parameter] public string? ErrorMessage { get; set; }
+}

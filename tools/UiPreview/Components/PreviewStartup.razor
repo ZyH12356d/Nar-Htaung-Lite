@@ -1,0 +1,7 @@
+@page "/preview/startup"
+@page "/preview/startup-error"
+@layout PreviewLayout
+@inject NavigationManager Navigation
+
+<PageTitle>Opening Nar Htaung Lite</PageTitle>
+<StartupScreen ErrorMessage="@(Navigation.Uri.EndsWith("/preview/startup-error") ? "Your library couldn’t be opened. Close and reopen the app." : null)" />

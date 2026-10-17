@@ -26,5 +26,9 @@ mornings while another collection is playing, use its Shuffle button, inspect th
 queue, and return Home to check that the active queue stays intact. Home shuffle should select
 all seven fixture tracks. The empty collection should stop playback and disable shuffle.
 
+The /preview/startup route holds the actual branded startup component on screen for visual
+review; /preview/startup-error shows its error message. In the app, the component appears
+while the library/player initializes and disappears as soon as initialization completes.
+
 The /preview/search-results route renders fixture search results, and /preview/review
 shows three phone screens together for visual review.

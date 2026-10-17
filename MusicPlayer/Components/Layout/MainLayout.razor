@@ -5,18 +5,27 @@
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JSRuntime
 
+@if (_starting || !string.IsNullOrEmpty(_startupError))
+{
+    <StartupScreen ErrorMessage="@_startupError" />
+}
+else
+{
 <div class="app-layout @(PlayerService.CurrentSong is not null ? "has-player" : "")">
     <header class="app-topbar" inert="@PlayerService.IsPlayerExpanded">
-        <a class="brand" href="/" aria-label="Nar Htaung Lite home"><span class="brand-mark"><AppIcon Name="wave" Size="23" /></span><span>Nar Htaung<span class="brand-lite">LITE</span></span></a>
+        <a class="brand" href="/" aria-label="Nar Htaung Lite home"><span class="brand-mark"><img src="logo/nar-htaung.png" width="36" height="36" alt="" /></span><span>Nar Htaung<span class="brand-lite">LITE</span></span></a>
         <button class="icon-button theme-toggle" @onclick="ToggleTheme" aria-label="@(_dark ? "Use light theme" : "Use dark theme")"><AppIcon Name="@(_dark ? "sun" : "moon")" Size="21" /></button>
     </header>
     <main class="main-content" id="main-content" inert="@PlayerService.IsPlayerExpanded">@Body</main>
     <div class="bottom-nav-container" inert="@PlayerService.IsPlayerExpanded"><NavMenu /></div>
     @if (!IsPlayerRoute) { <PlayerOverlay /> }
 </div>
+}
 
 @code {
     private bool _dark = true;
+    private bool _starting = true;
+    private string? _startupError;
     private bool IsPlayerRoute => NavigationManager.ToBaseRelativePath(NavigationManager.Uri).Split('?')[0] == "player";
     protected override async Task OnInitializedAsync()
     {
@@ -25,7 +34,13 @@
         NavigationService.CollapsePlayerRequested += CollapsePlayer;
         PlayerService.PropertyChanged += PlayerChanged;
         NavigationService.CurrentPage = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
-        await PlayerService.InitializeAsync();
+        try { await PlayerService.InitializeAsync(); }
+        catch (Exception ex)
+        {
+            _startupError = "Your library couldn’t be opened. Close and reopen the app.";
+            Console.WriteLine($"Startup failed: {ex.Message}");
+        }
+        finally { _starting = false; }
     }
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {

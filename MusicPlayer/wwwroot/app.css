@@ -1,4 +1,105 @@
 /* Nar Htaung: shared tokens, typography, layouts and controls. */
+.startup-screen {
+    position:fixed;
+    inset:0;
+    z-index:300;
+    display:grid;
+    place-items:center;
+    min-height:100dvh;
+    padding:32px 24px calc(56px + env(safe-area-inset-bottom,0px));
+    background:#101514;
+    color:#f4f5ed;
+    text-align:center;
+    overflow-y:auto
+}
+.startup-content {
+    width:100%;
+    max-width:340px;
+    margin-top:-24px
+}
+.startup-logo {
+    display:block;
+    width:144px;
+    height:144px;
+    margin:0 auto 24px;
+    border-radius:34px;
+    object-fit:cover;
+    box-shadow:0 20px 70px #0002
+}
+.startup-content h1 {
+    margin:0;
+    font-size:29px;
+    line-height:1.3;
+    letter-spacing:-1.1px;
+    font-weight:750
+}
+.startup-content h1>span {
+    display:block;
+    color:#c3edb5;
+    font-size:9px;
+    font-weight:500;
+    letter-spacing:4px;
+    margin:8px 0 0 4px
+}
+.startup-tagline {
+    margin:20px 0 0;
+    color:#94a298;
+    font-size:13px
+}
+.startup-wave {
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    gap:5px;
+    height:28px;
+    margin:42px 0 14px
+}
+.startup-wave>i {
+    display:block;
+    width:4px;
+    height:20px;
+    border-radius:4px;
+    background:#c3edb5;
+    animation:startup-wave 1.1s ease-in-out infinite;
+    transform-origin:center
+}
+.startup-wave>i:nth-child(2) { animation-delay:.12s }
+.startup-wave>i:nth-child(3) { animation-delay:.24s }
+.startup-wave>i:nth-child(4) { animation-delay:.36s }
+.startup-wave>i:nth-child(5) { animation-delay:.48s }
+@keyframes startup-wave {
+    0%,100% { transform:scaleY(.35); opacity:.5 }
+    50% { transform:scaleY(1); opacity:1 }
+}
+.startup-status {
+    margin:0;
+    color:#94a298;
+    font-size:11px;
+    letter-spacing:.2px
+}
+.startup-error {
+    margin-top:32px;
+    line-height:1.8
+}
+.startup-footer {
+    position:absolute;
+    bottom:calc(28px + env(safe-area-inset-bottom,0px));
+    margin:0;
+    font-size:8px;
+    letter-spacing:2.3px;
+    color:#94a298
+}
+body:has(.startup-screen) {
+    overflow:hidden
+}
+@media(max-height:520px) {
+    .startup-screen { padding-top:20px; padding-bottom:36px }
+    .startup-content { margin-top:0 }
+    .startup-logo { width:80px; height:80px; border-radius:20px; margin-bottom:14px }
+    .startup-tagline { margin-top:12px }
+    .startup-wave { margin-top:22px; margin-bottom:8px }
+    .startup-footer { display:none }
+}
 :root {
     color-scheme:dark;
     --bg:#101514;
@@ -136,6 +237,16 @@ h1:focus {
     border-radius:11px;
     color:var(--accent);
     background:var(--surface-raised)
+}
+.brand-mark {
+    background:#101514;
+    overflow:hidden
+}
+.brand-mark>img {
+    display:block;
+    width:100%;
+    height:100%;
+    object-fit:cover
 }
 .brand-lite {
     font-size:8px;

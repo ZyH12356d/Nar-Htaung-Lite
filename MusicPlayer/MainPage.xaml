@@ -3,9 +3,11 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:local="clr-namespace:MusicPlayer"
              xmlns:components="clr-namespace:MusicPlayer.Components"
-             x:Class="MusicPlayer.MainPage">
+             x:Class="MusicPlayer.MainPage"
+             BackgroundColor="#101514">
 
-    <BlazorWebView x:Name="blazorWebView" HostPage="wwwroot/index.html">
+    <BlazorWebView x:Name="blazorWebView" HostPage="wwwroot/index.html" BackgroundColor="#101514"
+                   BlazorWebViewInitialized="OnBlazorWebViewInitialized">
         <BlazorWebView.RootComponents>
             <RootComponent Selector="#app" ComponentType="{x:Type components:Routes}" />
         </BlazorWebView.RootComponents>

@@ -10,6 +10,13 @@ namespace MusicPlayer
             _navigationService = navigationService;
         }
 
+        private void OnBlazorWebViewInitialized(object? sender, Microsoft.AspNetCore.Components.WebView.BlazorWebViewInitializedEventArgs e)
+        {
+#if ANDROID
+            e.WebView.SetBackgroundColor(global::Android.Graphics.Color.Rgb(16, 21, 20));
+#endif
+        }
+
         protected override bool OnBackButtonPressed()
         {
             if (_navigationService.IsPlayerExpanded)
