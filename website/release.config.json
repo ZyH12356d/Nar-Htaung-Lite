@@ -3,8 +3,8 @@
   "channel": "Beta",
   "minimumAndroidVersion": "7.0",
   "architecture": "64-bit",
-  "downloadUrl": "",
+  "downloadUrl": "https://github.com/ZyH12356d/nar-htaung-releases/releases/download/v1.2/nar-htaung-lite-1.2.apk",
   "fileName": "nar-htaung-lite-1.2.apk",
-  "fileSizeBytes": null,
-  "sha256": ""
+  "fileSizeBytes": 39692470,
+  "sha256": "55796b98a729b320e20c5666538715dda5279e480cf2b08ae677a19e302e91b2"
 }

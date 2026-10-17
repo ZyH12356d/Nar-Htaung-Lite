@@ -31,7 +31,7 @@ export async function prepareRelease({ root, env = process.env }) {
     await rm(downloads, { recursive: true, force: true });
   } else {
     if (env['VERCEL'] === '1')
-      throw new Error('Set APK_DOWNLOAD_URL in Vercel to your public signed APK release URL before deploying.');
+      throw new Error('Set APK_DOWNLOAD_URL in Vercel to your public signed APK release URL before deploying source code. For drag-and-drop with the APK included, run npm run build:drop locally and upload dist/nar-htaung-website/browser. See README.md.');
     const source = env['APK_SOURCE'] || resolve(root, '../MusicPlayer/bin/Release/net10.0-android/com.companyname.musicplayer-Signed.apk');
     let bytes;
     try { bytes = await readFile(source); }

@@ -50,6 +50,16 @@ test('Vercel uses the configured public APK and removes stale local download out
   await assert.rejects(access(join(root, 'public/downloads')), { code: 'ENOENT' });
 });
 
+test('Vercel builds from the configured public APK URL without an environment override', async t => {
+  const url = 'https://github.com/example/music/releases/download/v1.2/music.apk';
+  const root = await fixture(t, { downloadUrl: url, fileSizeBytes: 1234, sha256: 'a'.repeat(64) });
+  const release = await prepareRelease({ root, env: { VERCEL: '1' } });
+  assert.equal(release.downloadUrl, url);
+  assert.equal(release.fileSizeBytes, 1234);
+  assert.equal(release.sha256, 'a'.repeat(64));
+  await assert.rejects(access(join(root, 'public/downloads')), { code: 'ENOENT' });
+});
+
 test('Vercel fails clearly without a public APK URL instead of publishing a broken button', async t => {
   const root = await fixture(t);
   await mkdir(join(root, 'src/app'), { recursive: true });

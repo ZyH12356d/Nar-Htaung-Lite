@@ -2,7 +2,32 @@
 
 A static Angular landing page for the Android app, styled with the app's charcoal and mint branding. It includes app previews, features, a versioned APK download, installation instructions, FAQs, and privacy notes. It has no backend, accounts, or analytics scripts.
 
-## Run locally
+## Deploy the source on Vercel
+
+The public APK link is already configured in `release.config.json`:
+
+[Download Nar Htaung Lite 1.2](https://github.com/ZyH12356d/nar-htaung-releases/releases/download/v1.2/nar-htaung-lite-1.2.apk)
+
+The download was verified publicly and matches the signed Android Release APK. Its size and SHA-256 checksum are recorded in the same configuration file.
+
+1. Upload the **website source folder** to [Vercel Drop](https://vercel.com/drop), or drop the updated folder onto your existing project in Vercel.
+2. The upload root should contain `package.json`, `vercel.json`, `release.config.json`, `src`, `scripts`, and `public`.
+3. Use Angular as the framework. The included configuration sets Build Command to `npm run build` and Output Directory to `dist/nar-htaung-website/browser`. Use Node.js 24.x.
+4. Leave Root Directory empty when uploading the `website` folder itself. If importing the entire Git repository instead, set Root Directory to `website`.
+5. Deploy. Vercel builds the website automatically and its download buttons link to the APK on GitHub Releases.
+6. Once the deployment is Ready, open the site on Android and test the APK download.
+
+**No local website build or APK_DOWNLOAD_URL environment variable is required.** If you previously configured that variable in Vercel, remove it to use the URL in `release.config.json`, or ensure it contains the same valid APK URL. Environment variables override the file.
+
+The earlier missing-URL error is resolved by the configured public release link. The `npm fund`, `allowScripts`, and `cache-dir` messages in the reported deployment log were warnings; the missing APK URL stopped that build.
+
+## Publish a new app version
+
+Upload the new signed APK as a GitHub Release asset, then update `release.config.json` with its version, direct APK URL, filename, byte size, and SHA-256 checksum. Keep the Android requirements consistent with that APK. Upload or push the updated website source to trigger a new Vercel deployment.
+
+Use the same Android signing key for future app updates. A separate public releases repository lets the app source remain in its existing repository.
+
+## Local development (optional)
 
 Requires Node.js 24.15 or newer in the Node 24 release line and npm.
 
@@ -12,50 +37,30 @@ npm.cmd ci
 npm.cmd start
 ```
 
-Open [http://localhost:4200](http://localhost:4200). The start script prepares release metadata and copies the existing signed Release APK from the mobile project's build output into an ignored local downloads folder.
-
-These PowerShell examples use `npm.cmd` so they work when PowerShell script execution is disabled.
-
-If that APK has not been built yet, build the Android Release first, or select another APK:
-
-```powershell
-$env:APK_SOURCE = 'D:\path\to\your-signed-app.apk'
-npm.cmd start
-```
-
-The website does not create or change signing keys. Use the same signing key for future Android updates.
+Open [http://localhost:4200](http://localhost:4200). These PowerShell examples use `npm.cmd` so they work when PowerShell script execution is disabled. The configured public APK is used during development too; a local Android build is unnecessary for website development.
 
 ## Release configuration
 
-Edit `release.config.json` when the app version or Android requirements change. It is the source for visible release information. Build preparation generates `src/app/release.generated.ts` and `public/release.json`; do not edit those generated files.
+Edit `release.config.json` when the app version or Android requirements change. Build preparation generates `src/app/release.generated.ts` and `public/release.json`; do not edit those generated files.
 
-- `downloadUrl`: leave empty for the local APK, or set a public HTTPS URL ending in `.apk`.
-- `fileName`: download filename shown to browsers.
-- `fileSizeBytes` and `sha256`: optional metadata for a remote release. Local APK metadata is calculated automatically.
-- `version`, `channel`, `minimumAndroidVersion`, and `architecture`: must describe the APK you publish.
+- `downloadUrl`: the public HTTPS URL ending in `.apk`.
+- `fileName`: preferred download filename.
+- `fileSizeBytes` and `sha256`: metadata for the published APK. Update them together with the release URL.
+- `version`, `channel`, `minimumAndroidVersion`, and `architecture`: must describe the published APK.
 
-Environment variables override configuration:
+Optional environment overrides:
 
 | Variable | Purpose |
 | --- | --- |
-| `APK_DOWNLOAD_URL` | Public direct link to a signed APK; required on Vercel unless configured in `release.config.json`. |
+| `APK_DOWNLOAD_URL` | Override the public APK URL in the configuration file. |
 | `APP_VERSION` | Override the displayed app version. |
 | `APK_SOURCE` | Select a local APK when no public URL is configured. |
 
-`.env.example` documents these settings. Environment files are not loaded automatically by the preparation script; set them in your shell or in Vercel.
+`.env.example` documents these settings. Environment files are not loaded automatically by the preparation script; set overrides in your shell or in Vercel.
 
-The local APK and generated release files are ignored by Git. A build using a public URL removes generated local downloads so the APK is served by the release host.
+For local APK testing, clear `downloadUrl`, leave `APK_DOWNLOAD_URL` unset, and set `APK_SOURCE` to the signed APK path. Without an explicit source, local builds use the mobile project's existing Release APK. A Vercel source build requires the public URL, since the Android build output is outside the website upload.
 
-## Publish on Vercel
-
-1. Upload your signed APK to a **public GitHub Release** and copy the APK asset's direct HTTPS URL. A separate public releases repository works if the app's source repository is private. Keep the APK version and website metadata in sync.
-2. Push the website source to GitHub and import that repository into Vercel.
-3. Set the Vercel project's **Root Directory** to `website`.
-4. Select Angular as the framework. The included `vercel.json` sets `npm run build` and output directory `dist/nar-htaung-website/browser`. Use Node.js 24.x.
-5. Add `APK_DOWNLOAD_URL` in Vercel's environment settings, with the public APK link. Set it for Production and Preview if both should build.
-6. Deploy, then open the production site on an Android phone and verify the download and installation.
-
-Vercel builds deliberately fail when no public APK URL is configured. This prevents publishing a download button pointing at a missing file. The website has no server functions or database requirement. Check the host's current plan terms before publishing.
+Generated release files, local APK copies, dependencies, and build output are ignored by Git. A public-URL build removes generated local downloads and keeps the APK out of website deployments.
 
 ## Build and checks
 
@@ -64,19 +69,10 @@ npm.cmd test
 npm.cmd run build
 ```
 
-`npm test` checks release selection, APK integrity metadata, stale-output cleanup, and invalid configuration. Angular's production build checks TypeScript and templates and applies bundle budgets.
+The tests check release selection, cloud builds without environment overrides, APK integrity metadata, stale-output cleanup, and invalid configuration. Angular's production build checks TypeScript and templates and applies bundle budgets.
 
-For a production-style build with a remote APK:
-
-```powershell
-$env:APK_DOWNLOAD_URL = 'https://github.com/YOUR-ACCOUNT/YOUR-REPOSITORY/releases/download/v1.2/nar-htaung-lite-1.2.apk'
-npm.cmd run build
-```
-
-Replace the example with your actual published asset URL. No public release URL was verified during the initial website setup.
+An optional `npm.cmd run build:drop` command prepares the compiled `dist/nar-htaung-website/browser` folder for static-only uploads. It is separate from the recommended source-upload workflow above.
 
 ## Assets
 
 `public/images/app-*.png` previews were captured from the app's UI preview using a sample library. The site labels them as sample content. `app-logo.png` reuses the approved app artwork; `brand-mark.svg` follows the app's launcher symbol. Fonts use the device's available system fonts, so the site makes no external font requests.
-
-Before publishing, replace the sample screenshots if desired, confirm the release metadata, and review the privacy copy against any future app changes.
