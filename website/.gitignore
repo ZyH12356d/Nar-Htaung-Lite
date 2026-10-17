@@ -1,0 +1,13 @@
+/node_modules
+/dist
+/.angular
+/.vercel
+/.env
+/.env.*
+!/.env.example
+/public/downloads/
+/public/release.json
+/src/app/release.generated.ts
+npm-debug.log*
+.DS_Store
+Thumbs.db

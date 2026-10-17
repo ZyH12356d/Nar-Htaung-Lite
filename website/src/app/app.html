@@ -1,0 +1,132 @@
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="shell header-inner">
+    <a class="brand" href="#" aria-label="Nar Htaung Lite home">
+      <img src="images/brand-mark.svg" width="42" height="42" alt="" />
+      <span>Nar Htaung <span class="lite">LITE</span></span>
+    </a>
+    <nav id="site-nav" aria-label="Main navigation" [class.is-open]="menuOpen()">
+      <a href="#features" (click)="closeMenu()">The little things</a>
+      <a href="#inside" (click)="closeMenu()">Take a look</a>
+      <a href="#questions" (click)="closeMenu()">Good to know</a>
+      <a class="button nav-download" href="#download" (click)="closeMenu()">Get the app <app-icon name="arrow" /></a>
+    </nav>
+    <button class="menu-toggle" type="button" [attr.aria-expanded]="menuOpen()" aria-controls="site-nav"
+      [attr.aria-label]="menuOpen() ? 'Close navigation' : 'Open navigation'" (click)="menuOpen.set(!menuOpen())">
+      <app-icon [name]="menuOpen() ? 'close' : 'menu'" />
+    </button>
+  </div>
+</header>
+
+<main id="main">
+  <section class="hero">
+    <div class="shell hero-grid">
+      <div class="hero-copy">
+        <p class="eyebrow hero-eyebrow"><span class="status-dot"></span> A LITTLE SPACE FOR YOUR SOUNDTRACK</p>
+        <h1>Your music.<br /><span>Your moment.</span></h1>
+        <p class="hero-description">The songs you come back to.<br class="desktop-break" /> The moments you make your own.<br />Keep them close with Nar Htaung Lite.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" [href]="release.downloadUrl" [download]="release.fileName">
+            <app-icon name="download" /> Download for Android <app-icon class="button-arrow" name="arrow" />
+          </a>
+          <a class="quiet-link" href="#inside">Meet your next music player <span>↘</span></a>
+        </div>
+        <p class="release-line"><app-icon name="android" /> Android {{ release.minimumAndroidVersion }}+ <span>·</span> {{ release.architecture }} <span>·</span> {{ release.channel }} v{{ release.version }}</p>
+      </div>
+      <div class="hero-visual" aria-label="Preview of the Nar Htaung Lite music player">
+        <div class="orbit orbit-one" aria-hidden="true"></div><div class="orbit orbit-two" aria-hidden="true"></div>
+        <span class="orbit-dot dot-one" aria-hidden="true"></span><span class="orbit-dot dot-two" aria-hidden="true"></span>
+        <div class="handwritten" aria-hidden="true">your everyday escape
+          <svg viewBox="0 0 100 64" fill="none"><path d="M5 8c70-10 100 15 60 46m-4-15 3 17 17-5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" /></svg>
+        </div>
+        <div class="phone hero-phone"><img src="images/app-player.png" width="390" height="844" fetchpriority="high" alt="Nar Htaung Lite playing Rain over Yangon in a sample library" /></div>
+        <div class="floating-note"><span class="note-icon"><app-icon name="offline" /></span><span><strong>A little off the grid.</strong><small>Your saved music comes along.</small></span></div>
+        <div class="on-repeat" aria-hidden="true"><span class="tiny-wave"><i></i><i></i><i></i><i></i><i></i></span><span>GOOD DAYS.<br /><strong>ON REPEAT.</strong></span></div>
+      </div>
+    </div>
+    <div class="shell hero-bottom"><span>LESS NOISE. MORE OF WHAT YOU LOVE.</span><a href="#features" aria-label="Explore the app"><span class="scroll-line"></span> SCROLL A LITTLE <span>↓</span></a></div>
+  </section>
+
+  <div class="benefits-strip">
+    <div class="shell benefits-inner"><span><app-icon name="offline" /> Your favorites, offline</span><i></i><span><app-icon name="collection" /> Collections that feel like you</span><i></i><span><app-icon name="headphones" /> Made for everyday listening</span></div>
+  </div>
+
+  <section id="features" class="features section-pad">
+    <div class="shell feature-grid">
+      <div class="section-intro">
+        <p class="eyebrow">THE LITTLE THINGS, DONE RIGHT</p>
+        <h2>For the long way home.<br /><span>And everything<br />in between.</span></h2>
+        <p>A slow morning. A crowded commute.<br />That one song you play again.<br />Make a little room for your music.</p>
+        <div class="record-doodle" aria-hidden="true"><div class="record"><span><app-icon name="music" /></span></div><span class="record-caption">some things<br /><em>just feel right.</em></span></div>
+      </div>
+      <div class="feature-list">
+        <article class="feature-row"><span class="feature-number">01</span><div><span class="feature-icon"><app-icon name="download" /></span><h3>Save it. Keep it close.</h3><p>Download a track once, then take it with you. Your saved music is ready when the connection isn't.</p></div></article>
+        <article class="feature-row"><span class="feature-number">02</span><div><span class="feature-icon"><app-icon name="collection" /></span><h3>Every mood gets a collection.</h3><p>Late-night favorites. Sunday mornings. Something for the road. Make collections from the songs you already love.</p></div></article>
+        <article class="feature-row"><span class="feature-number">03</span><div><span class="feature-icon"><app-icon name="headphones" /></span><h3>Stay in the moment.</h3><p>Skip, pause, or go back without losing your place. The mini player and notification controls keep your collection playing.</p></div></article>
+      </div>
+    </div>
+  </section>
+
+  <section id="inside" class="inside section-pad">
+    <div class="shell inside-grid">
+      <div class="inside-copy">
+        <p class="eyebrow">A LOOK INSIDE</p>
+        <h2>Feels familiar.<br /><span>Feels like yours.</span></h2>
+        <div class="screen-tabs" role="tablist" aria-label="App screenshots">
+          @for (screen of screens; track screen.name; let index = $index) {
+            <button type="button" role="tab" [id]="'screen-tab-' + index" aria-controls="screen-panel"
+              [attr.aria-selected]="selectedScreen() === index" [attr.tabindex]="selectedScreen() === index ? 0 : -1"
+              (click)="selectScreen(index)" (keydown)="navigateScreens($event, index)">
+              <app-icon [name]="screen.icon" />{{ screen.name }}
+            </button>
+          }
+        </div>
+        <div class="screen-description" aria-live="polite"><span class="screen-index">0{{ selectedScreen() + 1 }} / 03</span><h3>{{ screens[selectedScreen()].title }}</h3><p>{{ screens[selectedScreen()].description }}</p></div>
+        <p class="preview-note">App previews shown with a sample library.</p>
+      </div>
+      <div class="screen-stage" role="tabpanel" id="screen-panel" [attr.aria-labelledby]="'screen-tab-' + selectedScreen()" tabindex="0">
+        <span class="stage-star star-one" aria-hidden="true">✳</span><span class="stage-star star-two" aria-hidden="true">✳</span>
+        <div class="phone gallery-phone"><img [src]="screens[selectedScreen()].image" [alt]="screens[selectedScreen()].alt" width="390" height="844" loading="lazy" decoding="async" /></div>
+        <span class="stage-label" aria-hidden="true">SMALL APP.<br />A WHOLE LOT OF FEELING.</span>
+      </div>
+    </div>
+  </section>
+
+  <section id="download" class="download-section section-pad">
+    <div class="shell">
+      <div class="download-heading"><p class="eyebrow"><span class="status-dot"></span> READY WHEN YOU ARE</p><h2>Your next favorite<br /><span>little app.</span></h2><p>A few taps now. A soundtrack for later.</p></div>
+      <div class="download-layout">
+        <div class="download-card">
+          <div class="download-app"><img src="images/brand-mark.svg" alt="" width="68" height="68" /><div><h3>Nar Htaung Lite</h3><span>Your offline soundtrack.</span></div><span class="beta-tag">{{ release.channel }}</span></div>
+          <div class="download-specs"><span>VERSION<strong>{{ release.version }}</strong></span><span>FOR ANDROID<strong>{{ release.minimumAndroidVersion }}+ · {{ release.architecture }}</strong></span>@if (fileSize) { <span>DOWNLOAD<strong>{{ fileSize }}</strong></span> }</div>
+          <a class="button button-primary download-main" [href]="release.downloadUrl" [download]="release.fileName"><app-icon name="download" /> Download Android APK <app-icon class="button-arrow" name="arrow" /></a>
+          <p class="download-hint"><app-icon name="check" /> Direct APK download</p>
+          <details class="release-notes"><summary>What's in this version <app-icon name="chevron" /></summary><ul><li>Offline playback and custom collections.</li><li>Collection shuffle and playback controls in notifications.</li><li>A refreshed player, app icon, and opening screen.</li><li>Improved library storage and browsing for larger collections.</li></ul></details>
+        </div>
+        <ol class="install-steps" aria-label="How to install">
+          <li><span class="step-number">01</span><div><h3>Make a little space.</h3><p>Tap the download button to save the Android APK to your phone.</p></div></li>
+          <li><span class="step-number">02</span><div><h3>Let your phone guide you.</h3><p>Open the downloaded file and follow Android's installation prompts. Allow installation from your browser if asked.</p></div></li>
+          <li><span class="step-number">03</span><div><h3>Find your first favorite.</h3><p>Open Nar Htaung Lite, find a song, and start building your own soundtrack.</p></div></li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <section id="questions" class="faq-section section-pad">
+    <div class="shell faq-grid"><div><p class="eyebrow">GOOD TO KNOW</p><h2>A few notes<br /><span>before you play.</span></h2></div><div class="faq-list">@for (faq of faqs; track faq.question) { <details><summary>{{ faq.question }}<app-icon name="chevron" /></summary><p>{{ faq.answer }}</p></details> }</div></div>
+  </section>
+
+  <section class="closing-section"><div class="shell closing-inner"><div><span class="eyebrow">TAKE YOUR SOUNDTRACK WITH YOU</span><h2>Good company.<br />Wherever you go.</h2></div><a class="button button-dark" [href]="release.downloadUrl" [download]="release.fileName"><app-icon name="download" /> Get Nar Htaung Lite <app-icon name="arrow" /></a><span class="closing-flower" aria-hidden="true">✳</span></div></section>
+</main>
+
+<footer class="site-footer"><div class="shell footer-inner"><a class="brand" href="#" aria-label="Nar Htaung Lite home"><img src="images/brand-mark.svg" width="36" height="36" alt="" /><span>Nar Htaung <span class="lite">LITE</span></span></a><p>For the moments in between.</p><div><button type="button" (click)="openPrivacy()">Privacy notes</button><span>© 2026 Nar Htaung Lite</span></div></div></footer>
+
+<dialog #privacyDialog class="privacy-dialog" aria-labelledby="privacy-title" (click)="dismissBackdrop($event)">
+  <div class="dialog-heading"><span class="eyebrow">YOUR SPACE</span><button class="dialog-close" type="button" aria-label="Close privacy notes" (click)="closePrivacy()" autofocus><app-icon name="close" /></button></div>
+  <h2 id="privacy-title">A note on privacy.</h2>
+  <p>This website has no account system and does not add advertising or analytics scripts. Website and download hosting providers may keep their own request logs.</p>
+  <p>In the current Android app, downloaded music and collection records are stored on your device. Searching, downloading, and fetching missing cover artwork connect to YouTube and its image services.</p>
+  <p>Removing the app or clearing its data can remove your locally saved library.</p>
+  <button class="button button-primary" type="button" (click)="closePrivacy()">Got it <app-icon name="check" /></button>
+</dialog>
