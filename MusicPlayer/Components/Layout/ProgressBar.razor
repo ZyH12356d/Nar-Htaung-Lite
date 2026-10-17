@@ -1,64 +1,37 @@
-@using MusicPlayer.Services
-@inject PlayerService PlayerService
+@inject MusicPlayer.Services.PlayerService PlayerService
 @implements IDisposable
-
-<div class="seek-container w-100 px-2 mb-4">
-    <input type="range" class="form-range custom-range" 
-           min="0" max="@PlayerService.Duration" step="1"
-           value="@(IsDragging ? DragPosition : PlayerService.CurrentPosition)" 
-           @oninput="OnDrag" @onchange="OnSeekEnd" />
-    <div class="d-flex justify-content-between mt-1">
-        <span class="time-label">@FormatTime(IsDragging ? DragPosition : PlayerService.CurrentPosition)</span>
-        <span class="time-label">@FormatTime(PlayerService.Duration)</span>
+@if (Compact)
+{
+    <div class="mini-progress" aria-hidden="true"><span style="width:@Percent%"></span></div>
+}
+else
+{
+    <div class="seek-container">
+        <input type="range" class="seek-input" aria-label="Seek through track" min="0" max="@Number(Math.Max(0, PlayerService.Duration))" step="0.1" value="@Number(Position)" style="--seek-progress: @Percent%" disabled="@(PlayerService.Duration <= 0)" @oninput="OnDrag" @onchange="OnSeekEnd" @onpointercancel="() => _dragging = false" />
+        <div class="seek-times"><span>@FormatTime(Position)</span><span>@FormatTime(PlayerService.Duration)</span></div>
     </div>
-</div>
-
+}
 @code {
-    private bool IsDragging { get; set; }
-    private double DragPosition { get; set; }
-
-    protected override void OnInitialized()
+    [Parameter] public bool Compact { get; set; }
+    private bool _dragging;
+    private double _dragPosition;
+    private double Position => _dragging ? _dragPosition : PlayerService.CurrentPosition;
+    private string Percent => Number(PlayerService.Duration > 0 ? Math.Clamp(Position / PlayerService.Duration * 100, 0, 100) : 0);
+    private static string Number(double value) => (double.IsFinite(value) ? value : 0).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+    protected override void OnInitialized() => PlayerService.PropertyChanged += PlayerChanged;
+    private void PlayerChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        PlayerService.PropertyChanged += HandlePropertyChanged;
+        if (e.PropertyName is nameof(PlayerService.CurrentPosition) or nameof(PlayerService.Duration) or nameof(PlayerService.CurrentSong)) _ = InvokeAsync(StateHasChanged);
     }
-
-    private void HandlePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName == nameof(PlayerService.CurrentPosition))
-        {
-            if (!IsDragging)
-            {
-                InvokeAsync(StateHasChanged);
-            }
-        }
-    }
-
     private void OnDrag(ChangeEventArgs e)
     {
-        IsDragging = true;
-        if (double.TryParse(e.Value?.ToString(), out var pos))
-        {
-            DragPosition = pos;
-        }
+        if (double.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var position)) { _dragging = true; _dragPosition = position; }
     }
-
     private void OnSeekEnd(ChangeEventArgs e)
     {
-        if (double.TryParse(e.Value?.ToString(), out var pos))
-        {
-            PlayerService.Seek(pos);
-        }
-        IsDragging = false;
+        if (double.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var position)) PlayerService.Seek(position);
+        _dragging = false;
     }
-
-    private string FormatTime(double seconds)
-    {
-        var time = TimeSpan.FromSeconds(seconds);
-        return $"{(int)time.TotalMinutes}:{time.Seconds:D2}";
-    }
-
-    public void Dispose()
-    {
-        PlayerService.PropertyChanged -= HandlePropertyChanged;
-    }
+    private static string FormatTime(double seconds) { var time = TimeSpan.FromSeconds(double.IsFinite(seconds) ? Math.Max(0, seconds) : 0); return $"{(int)time.TotalMinutes}:{time.Seconds:D2}"; }
+    public void Dispose() => PlayerService.PropertyChanged -= PlayerChanged;
 }

@@ -1,0 +1,7 @@
+@page "/preview/empty"
+@inject MusicPlayer.Services.LibraryService Library
+@inject MusicPlayer.Services.PlayerService Player
+<MusicPlayer.Components.Pages.Home />
+@code {
+    protected override void OnInitialized() { Library.Clear(); Player.CurrentSong = null; }
+}

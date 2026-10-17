@@ -12,6 +12,11 @@ namespace MusicPlayer
 
         protected override bool OnBackButtonPressed()
         {
+            if (_navigationService.IsPlayerExpanded)
+            {
+                _navigationService.RequestCollapsePlayer();
+                return true;
+            }
             if (string.IsNullOrEmpty(_navigationService.CurrentPage) || _navigationService.CurrentPage == "/" || _navigationService.CurrentPage == "index.html")
             {
                 // On Home page, ask to quit
@@ -28,7 +33,7 @@ namespace MusicPlayer
 
         private async Task CheckQuitAsync()
         {
-            bool answer = await DisplayAlert("Quit App", "Are you sure you want to minimize? Your music will continue to play.", "Yes", "No");
+            bool answer = await DisplayAlertAsync("Keep the music going?", "Minimize the app and continue listening in the background.", "Minimize", "Stay here");
             if (answer)
             {
 #if ANDROID

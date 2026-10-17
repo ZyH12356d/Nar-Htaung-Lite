@@ -1,43 +1,25 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#101514" />
     <title>Nar Htaung Lite</title>
     <base href="/" />
-    <link rel="stylesheet" href="lib/bootstrap/dist/css/bootstrap.min.css" />
-    <link rel="stylesheet" href="app.css" />
-    <link rel="stylesheet" href="css/material-icons.css" />
-    <link rel="stylesheet" href="MusicPlayer.styles.css" />
-    <link rel="icon" href="data:,">
-</head>
-
-<body>
-
-    <div class="status-bar-safe-area"></div>
-
-    <div id="app">Loading...</div>
-
-    <div id="blazor-error-ui" data-nosnippet>
-        An unhandled error has occurred.
-        <a href="." class="reload">Reload</a>
-        <span class="dismiss">🗙</span>
-    </div>
-
     <script>
         function setTheme(theme) {
             document.documentElement.setAttribute('data-theme', theme);
+            document.querySelector('meta[name="theme-color"]').content = theme === 'light' ? '#f5f6ef' : '#101514';
             localStorage.setItem('theme', theme);
         }
-
-        // Apply theme immediately search
-        (function () {
-            const theme = localStorage.getItem('theme') || 'light';
-            document.documentElement.setAttribute('data-theme', theme);
-        })();
+        try { setTheme(localStorage.getItem('theme') || 'dark'); } catch {}
     </script>
+    <link rel="stylesheet" href="app.css" />
+    <link rel="icon" href="data:," />
+</head>
+<body>
+    <div id="app"><div class="loading-state" role="status"><span class="spinner"></span>Opening your music…</div></div>
+    <div id="blazor-error-ui" data-nosnippet>Something interrupted the app.<a href="." class="reload">Reload</a><span class="dismiss" aria-label="Dismiss">×</span></div>
     <script src="_framework/blazor.webview.js" autostart="false"></script>
-
 </body>
-
 </html>

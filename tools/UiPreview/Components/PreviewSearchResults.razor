@@ -1,0 +1,6 @@
+@page "/preview/search-results"
+<MusicPlayer.Components.Pages.Search.Search @ref="_search" />
+@code {
+    private MusicPlayer.Components.Pages.Search.Search? _search;
+    protected override void OnAfterRender(bool firstRender) { if (firstRender) _search?.ShowPreviewResults(); }
+}

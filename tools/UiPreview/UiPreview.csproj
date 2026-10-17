@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>MusicPlayer</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <RazorComponent Include="../../MusicPlayer/Components/**/*.razor" Link="Components/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../../MusicPlayer/Components/**/*.razor.cs" Link="Components/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../../MusicPlayer/Models/*.cs" Link="Models/%(Filename)%(Extension)" />
+    <Compile Include="../../MusicPlayer/Services/NavigationService.cs" Link="Services/NavigationService.cs" />
+    <PackageReference Include="YoutubeExplode" Version="6.6.2" />
+  </ItemGroup>
+</Project>

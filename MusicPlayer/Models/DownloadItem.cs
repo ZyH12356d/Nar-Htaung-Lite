@@ -16,12 +16,14 @@ namespace MusicPlayer.Models
     {
         private DownloadStatus _status;
         private double _progress;
-        private string _errorMessage;
+        private string _errorMessage = string.Empty;
 
         public string VideoId { get; set; } = string.Empty;
         public string Title { get; set; } = string.Empty;
         public string Author { get; set; } = string.Empty;
         public string ThumbnailUrl { get; set; } = string.Empty;
+        public IReadOnlyList<string> ThumbnailUrls { get; set; } = Array.Empty<string>();
+        public IReadOnlyList<string> CollectionIds { get; set; } = Array.Empty<string>();
 
         public DownloadStatus Status
         {

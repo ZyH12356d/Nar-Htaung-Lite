@@ -1,87 +1,59 @@
 @page "/downloads"
 @using MusicPlayer.Models
-@using MusicPlayer.Services
-@inject DownloadService DownloadService
+@using System.ComponentModel
+@using System.Collections.Specialized
+@inject MusicPlayer.Services.DownloadService DownloadService
 @implements IDisposable
-
-<div class="container pb-5" style="padding-top: 2rem;">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h3>Downloads</h3>
-        <button class="btn btn-outline-danger btn-sm" @onclick="DownloadService.ClearHistory">
-            Clear History
-        </button>
-    </div>
-
-    @if (!DownloadService.Downloads.Any())
+<PageTitle>Downloads · Nar Htaung Lite</PageTitle>
+<section class="page">
+    <div class="page-heading"><p class="eyebrow">TAKE YOUR MUSIC WITH YOU</p><h1>Downloads<span class="accent-text">.</span></h1><p class="page-description">A little preparation for a lot of listening.</p></div>
+    <div class="download-summary"><span class="summary-icon"><AppIcon Name="offline" Size="25" /></span><div><strong>@CompletedCount @(CompletedCount == 1 ? "download" : "downloads") complete</strong><span>@(DownloadService.ActiveDownloadCount > 0 ? $"{DownloadService.ActiveDownloadCount} in the queue" : "Ready for your next offline moment")</span></div><button class="text-button" @onclick="DownloadService.ClearHistory" disabled="@(!DownloadService.Downloads.Any(d => d.Status is DownloadStatus.Completed or DownloadStatus.Failed))">Clear finished</button></div>
+    <div class="filter-tabs" aria-label="Filter downloads">@foreach (var filter in Filters) { <button class="filter-tab @(_filter == filter ? "active" : "")" @onclick="() => _filter = filter" aria-pressed="@(_filter == filter)">@filter @if (filter == "All" && DownloadService.Downloads.Count > 0) { <span>@DownloadService.Downloads.Count</span> }</button> }</div>
+    @if (!VisibleDownloads.Any())
     {
-        <div class="text-center mt-5">
-            <span class="material-symbols-outlined" style="font-size: 4rem; color: #ccc;">download_done</span>
-            <p class="text-muted">No downloads yet.</p>
-        </div>
+        <div class="empty-state"><span class="empty-icon"><AppIcon Name="download" Size="35" /></span><h2>@(_filter == "All" ? "Your next listen starts here." : "Nothing here right now.")</h2><p>@(_filter == "All" ? "Find a song and tap download. We’ll take care of the rest." : "Downloads with this status will appear here.")</p>@if (_filter == "All") { <a class="button button-primary" href="/search">Find a track <AppIcon Name="arrow" Size="18" /></a> }</div>
     }
     else
     {
-        <div class="list-group">
-            @foreach (var item in DownloadService.Downloads)
+        <div class="downloads-list" aria-live="polite">
+            @foreach (var item in VisibleDownloads)
             {
-                <div class="list-group-item d-flex align-items-center mb-2 shadow-sm rounded border-0">
-                    <img src="@item.ThumbnailUrl" style="width: 80px; height: 45px; object-fit: cover; border-radius: 4px; margin-right: 15px;" />
-                    
-                    <div class="flex-grow-1 overflow-hidden">
-                        <h6 class="mb-0 text-truncate">@item.Title</h6>
-                        <small class="text-muted d-block">@item.Author</small>
-                        
-                        <div class="d-flex align-items-center mt-1">
-                            @switch (item.Status)
-                            {
-                                case DownloadStatus.Waiting:
-                                    <span class="badge bg-secondary me-2">Waiting</span>
-                                    break;
-                                case DownloadStatus.Processing:
-                                    <span class="badge bg-primary me-2">Processing...</span>
-                                    break;
-                                case DownloadStatus.Downloading:
-                                    <div class="w-100 me-2">
-                                        <div class="progress" style="height: 8px;">
-                                            <div class="progress-bar progress-bar-striped progress-bar-animated" 
-                                                 role="progressbar" 
-                                                 style="width: @(item.Progress)%"></div>
-                                        </div>
-                                    </div>
-                                    <small class="text-primary font-weight-bold">@item.Progress%</small>
-                                    break;
-                                case DownloadStatus.Completed:
-                                    <span class="badge bg-success me-2">Completed</span>
-                                    break;
-                                case DownloadStatus.Failed:
-                                    <span class="badge bg-danger me-2">Failed</span>
-                                    <small class="text-danger text-truncate">@item.ErrorMessage</small>
-                                    break;
-                            }
-                        </div>
-                    </div>
-                </div>
+                <article class="download-card" @key="item">
+                    <div class="download-card-top"><TrackArtwork Source="@item.ThumbnailUrl" Title="@item.Title" Class="download-cover" /><div class="download-copy"><h2>@item.Title</h2><p>@item.Author</p><span class="status-label status-@item.Status.ToString().ToLowerInvariant()"><AppIcon Name="@StatusIcon(item.Status)" Size="14" />@StatusText(item.Status)</span></div>@if (item.Status == DownloadStatus.Failed) { <button class="icon-button" @onclick="() => DownloadService.Retry(item)" aria-label="Retry @item.Title"><AppIcon Name="retry" Size="20" /></button> }</div>
+                    @if (item.Status is DownloadStatus.Downloading or DownloadStatus.Processing or DownloadStatus.Waiting)
+                    {
+                        <div class="download-progress-row"><div class="download-progress @(item.Status == DownloadStatus.Processing ? "indeterminate" : "")"><span style="width: @CssPercent(item.Progress)%"></span></div><span>@(item.Status == DownloadStatus.Downloading ? $"{item.Progress:0}%" : item.Status == DownloadStatus.Waiting ? "Queued" : "Preparing")</span></div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(item.ErrorMessage)) { <p class="download-message @(item.Status == DownloadStatus.Failed ? "is-error" : "")">@item.ErrorMessage</p> }
+                </article>
             }
         </div>
     }
-</div>
-
+</section>
 @code {
+    private static readonly string[] Filters = { "All", "Active", "Saved", "Failed" };
+    private string _filter = "All";
+    private readonly HashSet<DownloadItem> _subscribed = new();
+    private int CompletedCount => DownloadService.Downloads.Count(d => d.Status == DownloadStatus.Completed);
+    private IEnumerable<DownloadItem> VisibleDownloads => DownloadService.Downloads.Where(d => _filter switch { "Active" => d.Status is DownloadStatus.Waiting or DownloadStatus.Processing or DownloadStatus.Downloading, "Saved" => d.Status == DownloadStatus.Completed, "Failed" => d.Status == DownloadStatus.Failed, _ => true });
     protected override void OnInitialized()
     {
-        // Subscribe to changes if needed, but ObservableCollection usually handles basic list updates.
-        // DownloadItem implements INotifyPropertyChanged which Radzen/Blazor can sometimes bound to,
-        // but we might need StateHasChanged if the UI doesn't refresh automatically on item property changes.
-        DownloadService.Downloads.CollectionChanged += (s, e) => InvokeAsync(StateHasChanged);
-        
-        // Timer to refresh UI for progress bars
-        _refreshTimer = new Timer(_ => InvokeAsync(StateHasChanged), null, 0, 500);
+        DownloadService.Downloads.CollectionChanged += CollectionChanged; DownloadService.DownloadsChanged += Refresh; BindItems();
     }
-
-    private Timer? _refreshTimer;
-
+    private void BindItems()
+    {
+        foreach (var old in _subscribed.Where(d => !DownloadService.Downloads.Contains(d)).ToList()) { old.PropertyChanged -= ItemChanged; _subscribed.Remove(old); }
+        foreach (var item in DownloadService.Downloads.Where(d => !_subscribed.Contains(d))) { item.PropertyChanged += ItemChanged; _subscribed.Add(item); }
+    }
+    private void CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e) { BindItems(); Refresh(); }
+    private void ItemChanged(object? sender, PropertyChangedEventArgs e) => Refresh();
+    private void Refresh() => _ = InvokeAsync(StateHasChanged);
+    private static string StatusIcon(DownloadStatus status) => status switch { DownloadStatus.Completed => "check", DownloadStatus.Failed => "alert", DownloadStatus.Waiting => "queue", _ => "download" };
+    private static string StatusText(DownloadStatus status) => status switch { DownloadStatus.Completed => "Saved offline", DownloadStatus.Failed => "Needs attention", DownloadStatus.Waiting => "Waiting", DownloadStatus.Processing => "Preparing audio", _ => "Downloading" };
+    private static string CssPercent(double value) => Math.Clamp(value, 0, 100).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
     public void Dispose()
     {
-        _refreshTimer?.Dispose();
+        DownloadService.Downloads.CollectionChanged -= CollectionChanged; DownloadService.DownloadsChanged -= Refresh;
+        foreach (var item in _subscribed) item.PropertyChanged -= ItemChanged;
     }
 }

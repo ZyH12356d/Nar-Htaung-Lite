@@ -1,0 +1,32 @@
+@using MusicPlayer.Models
+
+<div class="track-row @(Active ? "is-current" : "")">
+    <button class="track-row-main" @onclick="() => OnPlay.InvokeAsync(Song)" aria-label="Play @Song.Title">
+        <TrackArtwork Source="@Song.ArtworkSource" Title="@Song.Title" Class="track-cover" />
+        <span class="track-copy"><span class="track-title">@Song.Title</span><span class="track-author">@Song.Author</span></span>
+        @if (Active && Playing)
+        {
+            <span class="equalizer" aria-label="Playing"><i></i><i></i><i></i></span>
+        }
+        else
+        {
+            <AppIcon Name="play" Size="19" Class="row-play" />
+        }
+    </button>
+    @if (OnDelete.HasDelegate)
+    {
+        <button class="icon-button subtle row-delete" @onclick="() => OnDelete.InvokeAsync(Song)" aria-label="@($"{ActionLabel} {Song.Title}")" title="@ActionLabel">
+            <AppIcon Name="@ActionIcon" Size="18" />
+        </button>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Song Song { get; set; } = default!;
+    [Parameter] public bool Active { get; set; }
+    [Parameter] public bool Playing { get; set; }
+    [Parameter] public EventCallback<Song> OnPlay { get; set; }
+    [Parameter] public EventCallback<Song> OnDelete { get; set; }
+    [Parameter] public string ActionLabel { get; set; } = "Delete";
+    [Parameter] public string ActionIcon { get; set; } = "trash";
+}

@@ -1,7 +1,9 @@
+using Microsoft.Extensions.Logging;
 using MusicPlayer.Models;
 using System.Collections.ObjectModel;
-using YoutubeExplode.Common;
+using System.Net;
 using YoutubeExplode.Converter;
+using YoutubeExplode.Exceptions;
 using YoutubeExplode.Search;
 using YoutubeExplode.Videos.Streams;
 
@@ -9,99 +11,79 @@ namespace MusicPlayer.Services
 {
     public class DownloadService
     {
-        private readonly HttpClient _httpClient;
         private readonly YoutubeExplode.YoutubeClient _youtube;
         private readonly LibraryService _libraryService;
-        private readonly SemaphoreSlim _semaphore = new(1, 1);
-        private bool _isProcessing = false;
+        private readonly ILogger<DownloadService> _logger;
+        private readonly CoverArtService _coverArt;
+        private bool _isProcessing;
+        private Task? _ffmpegInitializationTask;
 
         public ObservableCollection<DownloadItem> Downloads { get; } = new();
 
-        /// <summary>Number of songs currently waiting, processing, or downloading.</summary>
-        public int ActiveDownloadCount =>
-            Downloads.Count(d => d.Status == DownloadStatus.Waiting ||
-                                 d.Status == DownloadStatus.Processing ||
-                                 d.Status == DownloadStatus.Downloading);
+        public int ActiveDownloadCount => Downloads.Count(IsActive);
 
-        /// <summary>Fires whenever a download is enqueued, completes, or fails.</summary>
         public event Action? DownloadsChanged;
 
-        private Task? _ffmpegInitializationTask;
-
-        public DownloadService(HttpClient httpClient, YoutubeExplode.YoutubeClient youtube, LibraryService libraryService)
+        public DownloadService(YoutubeExplode.YoutubeClient youtube,
+            LibraryService libraryService, ILogger<DownloadService> logger, CoverArtService coverArt)
         {
-            _httpClient = httpClient;
             _youtube = youtube;
             _libraryService = libraryService;
-
-            // Ensure FFmpeg is available on Windows
-            if (DeviceInfo.Platform == DevicePlatform.WinUI)
-            {
-                _ffmpegInitializationTask = InitializeFfmpegAsync();
-            }
+            _logger = logger;
+            _coverArt = coverArt;
         }
 
         private async Task InitializeFfmpegAsync()
         {
-            try
+            var ffmpegPath = Path.Combine(FileSystem.AppDataDirectory, "ffmpeg.exe");
+            if (!File.Exists(ffmpegPath))
             {
-                var ffmpegPath = Path.Combine(FileSystem.AppDataDirectory, "ffmpeg.exe");
-                Console.WriteLine($"Checking for FFmpeg at: {ffmpegPath}");
-                
-                if (!File.Exists(ffmpegPath))
-                {
-                    Console.WriteLine("FFmpeg not found, downloading...");
-                    // This will download ffmpeg.exe, ffprobe.exe etc to the AppDataDirectory
-                    await Xabe.FFmpeg.Downloader.FFmpegDownloader.GetLatestVersion(
-                        Xabe.FFmpeg.Downloader.FFmpegVersion.Official, 
-                        FileSystem.AppDataDirectory);
-                    Console.WriteLine("FFmpeg download completed.");
-                }
-                else
-                {
-                    Console.WriteLine("FFmpeg already exists.");
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"FFmpeg initialization failed: {ex.Message}");
-                throw; // Rethrow to let the waiter know it failed
+                await Xabe.FFmpeg.Downloader.FFmpegDownloader.GetLatestVersion(
+                    Xabe.FFmpeg.Downloader.FFmpegVersion.Official,
+                    FileSystem.AppDataDirectory);
             }
         }
 
-        public void Enqueue(VideoSearchResult video)
+        public void Enqueue(VideoSearchResult video, IEnumerable<string>? collectionIds = null)
         {
-            var item = new DownloadItem
+            var destinations = collectionIds?.Distinct().ToArray() ?? Array.Empty<string>();
+            // Queue ownership stays on the UI thread; downloads run on a worker.
+            MainThread.BeginInvokeOnMainThread(() =>
             {
-                VideoId = video.Id.Value,
-                Title = video.Title,
-                Author = video.Author.ChannelTitle,
-                ThumbnailUrl = video.Thumbnails.OrderByDescending(t => t.Resolution.Width).FirstOrDefault()?.Url ?? string.Empty,
-                Status = DownloadStatus.Waiting,
-                Progress = 0
-            };
+                if (Downloads.Any(d => d.VideoId == video.Id.Value && IsActive(d)))
+                    return;
 
-            Downloads.Insert(0, item); // Show newest at top
-            DownloadsChanged?.Invoke();
-            
-            _ = Task.Run(() => ProcessQueueAsync());
+                Downloads.Insert(0, new DownloadItem
+                {
+                    VideoId = video.Id.Value,
+                    Title = video.Title,
+                    Author = video.Author.ChannelTitle,
+                    ThumbnailUrl = video.Thumbnails.OrderByDescending(t => t.Resolution.Width)
+                        .FirstOrDefault()?.Url ?? string.Empty,
+                    ThumbnailUrls = video.Thumbnails.OrderByDescending(t => t.Resolution.Width).Select(t => t.Url).ToArray(),
+                    CollectionIds = destinations,
+                    Status = DownloadStatus.Waiting
+                });
+                DownloadsChanged?.Invoke();
+                _ = ProcessQueueAsync();
+            });
         }
 
         private async Task ProcessQueueAsync()
         {
-            if (_isProcessing) return;
+            if (_isProcessing)
+                return;
 
+            _isProcessing = true;
             try
             {
-                _isProcessing = true;
-
-                while (true)
-                {
-                    var item = Downloads.FirstOrDefault(d => d.Status == DownloadStatus.Waiting);
-                    if (item == null) break;
-
-                    await DownloadItemAsync(item);
-                }
+                // The collection shows newest first; process requests oldest first.
+                while (Downloads.LastOrDefault(d => d.Status == DownloadStatus.Waiting) is { } item)
+                    await Task.Run(() => DownloadItemAsync(item));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "The download queue stopped unexpectedly.");
             }
             finally
             {
@@ -111,183 +93,220 @@ namespace MusicPlayer.Services
 
         private async Task DownloadItemAsync(DownloadItem item)
         {
-            await _semaphore.WaitAsync();
+            var stage = "Preparing download";
             try
             {
-                item.Status = DownloadStatus.Processing;
-                item.Progress = 0;
-
-                var sanitizedTitle = string.Join("_", item.Title.Split(Path.GetInvalidFileNameChars()));
-                
-                // Truncate to prevent IO Path TooLong on Android (max 60 characters)
-                if (sanitizedTitle.Length > 60)
+                await MainThread.InvokeOnMainThreadAsync(() =>
                 {
-                    sanitizedTitle = sanitizedTitle.Substring(0, 60).TrimEnd('_');
-                }
-
-                // Progress reporter
-                var progressReporter = new Progress<double>(p =>
-                {
-                    item.Progress = Math.Round(p * 100, 1);
-                    if (item.Progress > 0 && item.Status == DownloadStatus.Processing)
-                    {
-                        item.Status = DownloadStatus.Downloading;
-                    }
+                    item.Status = DownloadStatus.Processing;
+                    item.Progress = 0;
+                    item.ErrorMessage = string.Empty;
                 });
 
-                bool useConverter = DeviceInfo.Platform == DevicePlatform.WinUI;
-                string fileName = sanitizedTitle + (useConverter ? ".mp3" : ".m4a");
-                string filePath = Path.Combine(FileSystem.AppDataDirectory, fileName);
+                var useConverter = DeviceInfo.Platform == DevicePlatform.WinUI;
+                var extension = useConverter ? ".mp3" : ".m4a";
+                var title = string.Join("_", item.Title.Split(Path.GetInvalidFileNameChars()));
+                title = title.Length > 60 ? title[..60] : title;
+                title = title.Trim().TrimEnd('.');
+                if (string.IsNullOrEmpty(title))
+                    title = "Audio";
 
+                // Different videos with the same title must not overwrite each other.
+                var filePath = Path.Combine(FileSystem.AppDataDirectory,
+                    $"{title}-{item.VideoId}-{Guid.NewGuid():N}{extension}");
+
+                var ffmpegPath = Path.Combine(FileSystem.AppDataDirectory, "ffmpeg.exe");
                 if (useConverter)
                 {
-                    // Windows: Use FFmpeg for MP3 conversion
-                    if (_ffmpegInitializationTask != null)
-                    {
-                        item.Status = DownloadStatus.Processing;
-                        item.ErrorMessage = "Initializing FFmpeg...";
-                        await _ffmpegInitializationTask;
-                    }
-
-                    var ffmpegPath = Path.Combine(FileSystem.AppDataDirectory, "ffmpeg.exe");
-                    if (!File.Exists(ffmpegPath))
-                    {
-                         throw new Exception($"FFmpeg not found at {ffmpegPath}. Please restart the app to retry downloading it.");
-                    }
-
-                    int maxRetries = 3;
-                    int delayMs = 2000;
-                    for (int i = 0; i < maxRetries; i++)
-                    {
-                        try
-                        {
-                            await _youtube.Videos.DownloadAsync(
-                                item.VideoId, 
-                                filePath, 
-                                o => o.SetContainer("mp3")
-                                      .SetPreset(ConversionPreset.UltraFast)
-                                      .SetFFmpegPath(ffmpegPath),
-                                progressReporter);
-                            break; // Success
-                        }
-                        catch (Exception ex) when (i < maxRetries - 1)
-                        {
-                            Console.WriteLine($"Windows download attempt {i + 1} failed, retrying in {delayMs}ms... Error: {ex.Message}");
-                            await Task.Delay(delayMs);
-                            delayMs *= 2;
-                        }
-                    }
-                }
-                else
-                {
-                    // Android/iOS: Download M4A stream directly (no FFmpeg needed)
-                    var manifest = await _youtube.Videos.Streams.GetManifestAsync(item.VideoId);
-                    var streamInfo = manifest.GetAudioOnlyStreams()
-                        .Where(s => s.Container == YoutubeExplode.Videos.Streams.Container.Mp4)
-                        .GetWithHighestBitrate();
-                    
-                    if (streamInfo == null) 
-                        throw new Exception("No suitable M4A audio stream found for this video.");
-
-                    int maxRetries = 3;
-                    int delayMs = 2000;
-                    for (int i = 0; i < maxRetries; i++)
-                    {
-                        try
-                        {
-                            await _youtube.Videos.Streams.DownloadAsync(streamInfo, filePath, progressReporter);
-                            break; // Success
-                        }
-                        catch (Exception ex) when (i < maxRetries - 1)
-                        {
-                            Console.WriteLine($"Android/iOS download attempt {i + 1} failed, retrying in {delayMs}ms... Error: {ex.Message}");
-                            await Task.Delay(delayMs);
-                            delayMs *= 2;
-                        }
-                    }
-                }
-
-                item.Status = DownloadStatus.Processing; // Tagging phase
-                
-                // Get video metadata for tagging
-                var video = await _youtube.Videos.GetAsync(item.VideoId);
-
-                // Download thumbnail for cover art
-                byte[]? thumbBytes = null;
-                var thumb = video.Thumbnails.GetWithHighestResolution();
-                if (thumb != null)
-                {
+                    stage = "Initializing FFmpeg";
                     try
                     {
-                        thumbBytes = await _httpClient.GetByteArrayAsync(thumb.Url);
+                        _ffmpegInitializationTask ??= InitializeFfmpegAsync();
+                        await _ffmpegInitializationTask;
                     }
-                    catch { /* Ignore thumbnail download errors */ }
-                }
-
-                // Tagging with TagLibSharp
-                using (var tfile = TagLib.File.Create(filePath))
-                {
-                    tfile.Tag.Title = video.Title;
-                    tfile.Tag.Performers = new[] { video.Author.ChannelTitle };
-                    tfile.Tag.AlbumArtists = new[] { video.Author.ChannelTitle };
-                    tfile.Tag.Album = video.Author.ChannelTitle;
-
-                    if (thumbBytes != null)
+                    catch
                     {
-                        var picture = new TagLib.Picture(new TagLib.ByteVector(thumbBytes))
-                        {
-                            Type = TagLib.PictureType.FrontCover,
-                            Description = "Cover",
-                            MimeType = "image/jpeg"
-                        };
-                        tfile.Tag.Pictures = new TagLib.IPicture[] { picture };
+                        _ffmpegInitializationTask = null;
+                        throw;
                     }
 
-                    tfile.Save();
+                    if (!File.Exists(ffmpegPath))
+                        throw new FileNotFoundException("FFmpeg is required for Windows MP3 conversion.");
                 }
 
-                var newSong = new Song
+                var artworkTask = _coverArt.GetAsync(item.VideoId,
+                    item.ThumbnailUrls.Count > 0 ? item.ThumbnailUrls : new[] { item.ThumbnailUrl });
+                var transferAttempt = 0;
+
+                await DownloadFile.SaveAsync(filePath, async temporaryPath =>
                 {
-                    Title = video.Title,
-                    Author = video.Author.ChannelTitle,
-                    FilePath = filePath
+                    var currentAttempt = ++transferAttempt;
+                    await MainThread.InvokeOnMainThreadAsync(() =>
+                    {
+                        item.Status = DownloadStatus.Processing;
+                        item.Progress = 0;
+                        item.ErrorMessage = string.Empty;
+                    });
+                    var progress = new Progress<double>(p =>
+                    {
+                        MainThread.BeginInvokeOnMainThread(() =>
+                        {
+                            // Ignore late callbacks after retrying or starting tagging.
+                            if (currentAttempt == transferAttempt && item.Status == DownloadStatus.Downloading)
+                                item.Progress = Math.Round(Math.Clamp(p, 0, 1) * 100, 1);
+                        });
+                    });
+
+                    if (useConverter)
+                    {
+                        stage = "Downloading and converting audio";
+                        await MainThread.InvokeOnMainThreadAsync(() => { item.Status = DownloadStatus.Downloading; });
+                        await _youtube.Videos.DownloadAsync(item.VideoId, temporaryPath,
+                            options => options.SetContainer("mp3")
+                                .SetPreset(ConversionPreset.UltraFast)
+                                .SetFFmpegPath(ffmpegPath), progress);
+                    }
+                    else
+                    {
+                        // Resolve inside each attempt, so a retry gets fresh stream URLs.
+                        stage = "Getting audio streams";
+                        var manifest = await _youtube.Videos.Streams.GetManifestAsync(item.VideoId);
+                        var streams = manifest.GetAudioOnlyStreams()
+                            .Where(s => s.Container == Container.Mp4).ToArray();
+                        if (streams.Length == 0)
+                            throw new InvalidOperationException("No downloadable M4A audio stream is available for this video.");
+
+                        var stream = streams.GetWithHighestBitrate();
+                        stage = "Downloading audio";
+                        await MainThread.InvokeOnMainThreadAsync(() => { item.Status = DownloadStatus.Downloading; });
+                        await _youtube.Videos.Streams.DownloadAsync(stream, temporaryPath, progress);
+
+                        if (new FileInfo(temporaryPath).Length != stream.Size.Bytes)
+                            throw new HttpRequestException("The audio download ended before the complete file was received.");
+                    }
+
+                    await MainThread.InvokeOnMainThreadAsync(() => { item.Status = DownloadStatus.Processing; });
+                    stage = "Saving audio";
+                }, async metadataPath =>
+                {
+                    var artwork = await artworkTask;
+                    // MP4 artwork tags support JPEG/PNG. Other images remain available in the UI cache.
+                    var tagArtwork = artwork?.MimeType is "image/jpeg" or "image/png" ? artwork : null;
+                    WriteTags(metadataPath, item.Title, item.Author, tagArtwork?.Bytes, tagArtwork?.MimeType ?? "image/jpeg");
+                }, (nextAttempt, wait, ex) =>
+                {
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        item.Status = DownloadStatus.Processing;
+                        item.Progress = 0;
+                        item.ErrorMessage = $"Connection interrupted. Retrying ({nextAttempt}/{DownloadRetryPolicy.MaxAttempts}) in {wait.TotalSeconds:0}s...";
+                    });
+                    _logger.LogWarning(ex, "Retrying {VideoId} at {Stage}, attempt {Attempt}.",
+                        item.VideoId, stage, nextAttempt);
+                }, ex => _logger.LogWarning(ex, "Keeping audio without tags for {VideoId}.", item.VideoId),
+                ex => _logger.LogWarning(ex, "Could not remove a temporary file for {VideoId}.", item.VideoId));
+
+                stage = "Adding audio to library";
+                var song = new Song
+                {
+                    Title = item.Title,
+                    Author = item.Author,
+                    FilePath = filePath,
+                    VideoId = item.VideoId,
+                    ThumbnailUrl = item.ThumbnailUrl
                 };
 
-                if (thumbBytes != null)
+                if (await artworkTask is { } cover)
                 {
-                    newSong.ThumbnailDataUrl = $"data:image/jpeg;base64,{Convert.ToBase64String(thumbBytes)}";
+                    song.ThumbnailDataUrl = cover.DataUrl;
+                    try { await _libraryService.CacheArtworkAsync(song, cover); }
+                    catch (Exception ex) { _logger.LogWarning(ex, "Could not cache artwork for {VideoId}.", item.VideoId); }
                 }
 
-                await _libraryService.AddSongAsync(newSong);
-
-                item.Status = DownloadStatus.Completed;
-                item.Progress = 100;
-            }
-            catch (YoutubeExplode.Exceptions.VideoUnavailableException vex)
-            {
-                item.Status = DownloadStatus.Failed;
-                item.ErrorMessage = "YouTube is blocking the request (Bot Detection). Try again later or use a different video.";
-                Console.WriteLine($"Bot Detection: {vex.Message}");
+                await MainThread.InvokeOnMainThreadAsync(async () =>
+                {
+                    await _libraryService.AddSongAsync(song);
+                    item.ErrorMessage = string.Empty;
+                    try { await _libraryService.AddSongToCollectionsAsync(song, item.CollectionIds); }
+                    catch (Exception ex)
+                    {
+                        item.ErrorMessage = "Saved to All downloads, but the selected collection could not be updated.";
+                        _logger.LogWarning(ex, "Could not add {VideoId} to its selected collections.", item.VideoId);
+                    }
+                    item.Progress = 100;
+                    item.Status = DownloadStatus.Completed;
+                });
             }
             catch (Exception ex)
             {
-                item.Status = DownloadStatus.Failed;
-                item.ErrorMessage = ex.Message;
+                var detail = ex switch
+                {
+                    RequestLimitExceededException => $"YouTube is limiting requests. Wait before trying again. {ex.Message}",
+                    HttpRequestException { StatusCode: HttpStatusCode.TooManyRequests } =>
+                        $"YouTube is limiting requests (HTTP 429). Wait before trying again. {ex.Message}",
+                    HttpRequestException { StatusCode: HttpStatusCode.Forbidden } =>
+                        $"Access denied (HTTP 403). {ex.Message}",
+                    _ => ex.Message
+                };
+                await MainThread.InvokeOnMainThreadAsync(() =>
+                {
+                    item.Status = DownloadStatus.Failed;
+                    item.ErrorMessage = $"{stage}: {detail}";
+                });
+                _logger.LogError(ex, "Download failed for {VideoId} at {Stage}.", item.VideoId, stage);
             }
             finally
             {
-                _semaphore.Release();
-                DownloadsChanged?.Invoke(); // Notify badge when a download finishes or fails
+                await MainThread.InvokeOnMainThreadAsync(() => DownloadsChanged?.Invoke());
             }
         }
 
+        private static void WriteTags(string path, string title, string author, byte[]? thumbnail, string mimeType)
+        {
+            using var file = TagLib.File.Create(path);
+            file.Tag.Title = title;
+            file.Tag.Performers = new[] { author };
+            file.Tag.AlbumArtists = new[] { author };
+            file.Tag.Album = author;
+            if (thumbnail is not null)
+            {
+                file.Tag.Pictures = new TagLib.IPicture[]
+                {
+                    new TagLib.Picture(new TagLib.ByteVector(thumbnail))
+                    {
+                        Type = TagLib.PictureType.FrontCover,
+                        Description = "Cover",
+                        MimeType = mimeType
+                    }
+                };
+            }
+            file.Save();
+        }
+
+        private static bool IsActive(DownloadItem item) =>
+            item.Status is DownloadStatus.Waiting or DownloadStatus.Processing or DownloadStatus.Downloading;
+
         public void ClearHistory()
         {
-            var itemsToRemove = Downloads.Where(d => d.Status == DownloadStatus.Completed || d.Status == DownloadStatus.Failed).ToList();
-            foreach (var item in itemsToRemove)
+            MainThread.BeginInvokeOnMainThread(() =>
             {
-                Downloads.Remove(item);
-            }
+                foreach (var item in Downloads.Where(d => !IsActive(d)).ToList())
+                    Downloads.Remove(item);
+            });
+        }
+
+        public void Retry(DownloadItem item)
+        {
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                if (item.Status != DownloadStatus.Failed || Downloads.Any(d => d != item && d.VideoId == item.VideoId && IsActive(d)))
+                    return;
+                item.ErrorMessage = string.Empty;
+                item.Progress = 0;
+                item.Status = DownloadStatus.Waiting;
+                DownloadsChanged?.Invoke();
+                _ = ProcessQueueAsync();
+            });
         }
     }
 }

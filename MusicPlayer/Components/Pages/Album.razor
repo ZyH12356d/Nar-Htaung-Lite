@@ -1,11 +1,156 @@
 @page "/album"
+@using MusicPlayer.Models
+@inject MusicPlayer.Services.LibraryService Library
+@inject MusicPlayer.Services.PlayerService Player
+@implements IDisposable
 
-<PageTitle>Nar Htaung Lite - Albums</PageTitle>
+<PageTitle>Collections · Nar Htaung Lite</PageTitle>
+<section class="page collections-page">
+    <div class="page-heading"><p class="eyebrow">MADE FOR YOUR MOMENTS</p><h1>Your collections<span class="accent-text">.</span></h1><p class="page-description">Every download has a home. Make a few of your own.</p></div>
+    @if (!string.IsNullOrEmpty(_pageError)) { <div class="notice notice-error" role="alert">@_pageError</div> }
+    @if (!string.IsNullOrEmpty(Library.CollectionError)) { <div class="notice notice-error" role="alert">@Library.CollectionError</div> }
+    @if (!_showDetail)
+    {
+        <div class="section-heading"><h2>Your shelves <span class="count-label">@(Library.Collections.Count + 1)</span></h2><button class="button button-secondary collection-create" @onclick="OpenCreate" disabled="@(!string.IsNullOrEmpty(Library.CollectionError))"><AppIcon Name="plus" Size="18" />Create collection</button></div>
+        <div class="collection-grid">
+            <button class="collection-card default-collection" @onclick="() => OpenCollection(null)">
+                <div class="default-collection-art"><AppIcon Name="download" Size="42" /><span>ALWAYS HERE</span></div>
+                <span class="collection-card-copy"><span class="collection-kind">DEFAULT COLLECTION</span><strong>All downloads</strong><span>@TrackCount(Library.Songs.Count) · Added automatically</span></span>
+            </button>
+            @foreach (var collection in Library.Collections)
+            {
+                var tracks = Library.GetCollectionSongs(collection.Id).ToList();
+                <button class="collection-card" @key="collection.Id" @onclick="() => OpenCollection(collection.Id)">
+                    <TrackArtwork Source="@tracks.FirstOrDefault()?.ArtworkSource" Title="@collection.Name" />
+                    <span class="collection-card-copy"><span class="collection-kind">YOUR COLLECTION</span><strong>@collection.Name</strong><span>@TrackCount(tracks.Count)</span></span>
+                </button>
+            }
+        </div>
+        @if (!Library.Collections.Any()) { <div class="collection-tip"><AppIcon Name="library" Size="23" /><p>A soundtrack for a late night, a trip, or your everyday.<br /><strong>Create a collection and add songs from All downloads.</strong></p></div> }
+    }
+    else
+    {
+        <button class="text-button back-link" @onclick="BackToCollections"><AppIcon Name="back" Size="18" />All collections</button>
+        <div class="collection-detail-heading"><TrackArtwork Source="@SelectedSongs.FirstOrDefault()?.ArtworkSource" Title="@SelectedName" /><div><p class="eyebrow">@(_selectedId is null ? "DEFAULT COLLECTION" : "YOUR COLLECTION")</p><h2>@SelectedName</h2><p class="muted">@TrackCount(SelectedSongs.Count)</p></div></div>
+        <div class="collection-toolbar">
+            <p class="muted">@(_selectedId is null ? "Every song you download is saved here." : "Songs stay in All downloads, too.")</p>
+            @if (_selectedId is not null) { <button class="button button-secondary" @onclick="OpenAdd"><AppIcon Name="plus" Size="18" />Add songs</button> }
+        </div>
+        @if (SelectedSongs.Any())
+        {
+            <div class="track-list">
+                @foreach (var song in SelectedSongs)
+                {
+                    if (_selectedId is null)
+                    {
+                        <TrackRow Song="song" Active="@(Player.CurrentSong?.FilePath == song.FilePath)" Playing="Player.IsPlaying" OnPlay="Play" />
+                    }
+                    else
+                    {
+                        <TrackRow Song="song" Active="@(Player.CurrentSong?.FilePath == song.FilePath)" Playing="Player.IsPlaying" OnPlay="Play" OnDelete="Remove" ActionLabel="Remove from collection:" ActionIcon="minus" />
+                    }
+                }
+            </div>
+        }
+        else
+        {
+            <div class="empty-state"><span class="empty-icon"><AppIcon Name="music" Size="34" /></span><h2>A little room for your favorites.</h2><p>@(_selectedId is null ? "Your downloads will appear here automatically." : "Add songs you already have in All downloads.")</p>@if (_selectedId is null) { <a class="button button-primary" href="/search">Find music <AppIcon Name="arrow" Size="18" /></a> } else { <button class="button button-primary" @onclick="OpenAdd">Add songs</button> }</div>
+        }
+    }
+</section>
 
-<div class="container pb-5">
-    <h1 class="mb-4">Albums</h1>
+@if (_editing)
+{
+    <AppDialog Title="@(_creating ? "Create a collection" : "Add songs")" OnClose="CloseEditor" Busy="_saving">
+        <form class="collection-form" @onsubmit="Save" @onsubmit:preventDefault="true">
+            @if (_creating)
+            {
+                <label class="field-label" for="collection-name">Collection name</label>
+                <input id="collection-name" class="collection-name-input" placeholder="e.g. Late night favorites" maxlength="60" @bind="_name" @bind:event="oninput" disabled="@_saving" autofocus />
+            }
+            <div class="collection-selection-heading"><h3>From All downloads</h3><span class="muted">@_chosen.Count selected</span></div>
+            @if (AvailableSongs.Any())
+            {
+                <label class="search-field collection-filter"><AppIcon Name="search" Size="18" /><input type="search" aria-label="Filter songs to add" placeholder="Find a saved song" @bind="_filter" @bind:event="oninput" /></label>
+                <div class="song-picker">
+                    @foreach (var song in FilteredAvailableSongs)
+                    {
+                        <label class="picker-row" @key="song.FilePath"><input type="checkbox" checked="@_chosen.Contains(song.FilePath)" @onchange="() => Toggle(song.FilePath)" disabled="@_saving" /><TrackArtwork Source="@song.ArtworkSource" Title="@song.Title" Class="track-cover" /><span><strong>@song.Title</strong><small>@song.Author</small></span></label>
+                    }
+                    @if (!FilteredAvailableSongs.Any()) { <p class="inline-empty">No matching songs.</p> }
+                </div>
+            }
+            else { <p class="inline-empty">@(_creating ? "You can create an empty collection and add songs after downloading them." : "All your downloaded songs are already in this collection. Download more to add them here.")</p> }
+            @if (!string.IsNullOrEmpty(_editorError)) { <p class="notice notice-error" role="alert">@_editorError</p> }
+            <div class="collection-dialog-actions"><button type="button" class="button button-secondary" @onclick="CloseEditor" disabled="@_saving">Cancel</button><button type="submit" class="button button-primary" disabled="@(_saving || (_creating ? string.IsNullOrWhiteSpace(_name) : _chosen.Count == 0))">@(_saving ? "Saving…" : _creating ? "Create collection" : $"Add {_chosen.Count} {(_chosen.Count == 1 ? "song" : "songs")}")</button></div>
+        </form>
+    </AppDialog>
+}
 
-    <div class="alert alert-secondary border-0 shadow-sm" style="background-color: var(--bg-surface); color: var(--text-default);">
-        <p class="mb-0">Album feature is coming soon! Check back later.</p>
-    </div>
-</div>
+@code {
+    private bool _showDetail, _editing, _creating, _saving;
+    private string? _selectedId;
+    private string _name = "", _filter = "", _editorError = "", _pageError = "";
+    private readonly HashSet<string> _chosen = new();
+    private string SelectedName => _selectedId is null ? "All downloads" : Library.Collections.FirstOrDefault(c => c.Id == _selectedId)?.Name ?? "Collection";
+    private List<Song> SelectedSongs => Library.GetCollectionSongs(_selectedId).ToList();
+    private List<Song> AvailableSongs
+    {
+        get
+        {
+            if (_creating) return Library.Songs.ToList();
+            var included = SelectedSongs.Select(s => s.FilePath).ToHashSet();
+            return Library.Songs.Where(s => !included.Contains(s.FilePath)).ToList();
+        }
+    }
+    private IEnumerable<Song> FilteredAvailableSongs => AvailableSongs.Where(s => string.IsNullOrWhiteSpace(_filter) || $"{s.Title} {s.Author}".Contains(_filter, StringComparison.OrdinalIgnoreCase));
+    private static string TrackCount(int count) => $"{count} {(count == 1 ? "track" : "tracks")}";
+    protected override async Task OnInitializedAsync()
+    {
+        Library.LibraryUpdated += Refresh;
+        Player.PropertyChanged += PlayerChanged;
+        await Library.LoadLibraryAsync();
+    }
+    private void Refresh() => _ = InvokeAsync(StateHasChanged);
+    private void PlayerChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(Player.CurrentSong) or nameof(Player.IsPlaying)) Refresh();
+    }
+    private void OpenCollection(string? id) { _selectedId = id; _showDetail = true; _pageError = ""; }
+    private void BackToCollections() { _showDetail = false; _pageError = ""; }
+    private void OpenCreate() { _creating = true; OpenEditor(); }
+    private void OpenAdd() { _creating = false; OpenEditor(); }
+    private void OpenEditor() { _name = ""; _filter = ""; _chosen.Clear(); _editorError = ""; _editing = true; }
+    private void CloseEditor() { if (!_saving) _editing = false; }
+    private void Toggle(string path) { if (!_chosen.Add(path)) _chosen.Remove(path); }
+    private async Task Save()
+    {
+        if (_saving) return;
+        _saving = true; _editorError = "";
+        try
+        {
+            if (_creating)
+            {
+                var created = await Library.CreateCollectionAsync(_name, _chosen);
+                OpenCollection(created.Id);
+            }
+            else if (_selectedId is not null) await Library.AddSongsToCollectionAsync(_selectedId, _chosen);
+            _editing = false;
+        }
+        catch (Exception ex) { _editorError = ex.Message; }
+        finally { _saving = false; }
+    }
+    private async Task Remove(Song song)
+    {
+        if (_selectedId is null) return;
+        try { await Library.RemoveSongFromCollectionAsync(_selectedId, song.FilePath); }
+        catch (Exception ex) { _pageError = $"Could not remove the song. {ex.Message}"; }
+    }
+    private async Task Play(Song song)
+    {
+        Player.Playlist = SelectedSongs;
+        await Player.PlaySong(song);
+        Player.IsPlayerExpanded = true;
+    }
+    public void Dispose() { Library.LibraryUpdated -= Refresh; Player.PropertyChanged -= PlayerChanged; }
+}

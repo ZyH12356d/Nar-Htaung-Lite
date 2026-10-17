@@ -28,6 +28,8 @@
         <!-- Versions -->
         <ApplicationDisplayVersion>1.2</ApplicationDisplayVersion>
         <ApplicationVersion>3</ApplicationVersion>
+        <!-- NuGet requires the same package version for every target framework. -->
+        <PackageVersion>$(ApplicationDisplayVersion)</PackageVersion>
 
         <!-- To develop, package, and publish an app to the Microsoft Store, see: https://aka.ms/MauiTemplateUnpackaged -->
         <WindowsPackageType>None</WindowsPackageType>
@@ -73,8 +75,8 @@
         <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />
         <PackageReference Include="Plugin.Maui.Audio" Version="4.0.0" />
         <PackageReference Include="TagLibSharp" Version="2.3.0" />
-        <PackageReference Include="YoutubeExplode" Version="6.6.0" />
-        <PackageReference Include="YoutubeExplode.Converter" Version="6.6.0" />
+        <PackageReference Include="YoutubeExplode" Version="6.6.2" />
+        <PackageReference Include="YoutubeExplode.Converter" Version="6.6.2" />
         <PackageReference Include="Xabe.FFmpeg.Downloader" Version="6.0.2" />
     </ItemGroup>
 

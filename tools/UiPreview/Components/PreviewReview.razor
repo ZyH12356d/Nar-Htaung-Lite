@@ -1,0 +1,21 @@
+@page "/preview/review"
+@layout PreviewLayout
+<PageTitle>UI review · Nar Htaung Lite</PageTitle>
+<div class="preview-review">
+    <header><div><p>NAR HTAUNG LITE</p><h1>A new rhythm.</h1></div><span>Development preview · sample tracks</span></header>
+    <div class="preview-frames">
+        <section><h2>01 / Your library</h2><iframe src="/" title="Home screen"></iframe></section>
+        <section><h2>02 / Find your music</h2><iframe src="/preview/search-results" title="Search screen"></iframe></section>
+        <section><h2>03 / Now playing</h2><iframe src="/player" title="Player screen"></iframe></section>
+    </div>
+</div>
+<style>
+    .preview-review{max-width:1300px;margin:auto;padding:26px 24px 36px;background:#0c100e;color:#f4f5ed}
+    .preview-review>header{display:flex;align-items:end;justify-content:space-between;margin-bottom:24px}
+    .preview-review>header p{font-size:9px;letter-spacing:2.5px;color:#a4b99c;margin-bottom:8px}
+    .preview-review>header h1{font-size:29px;letter-spacing:-1px}
+    .preview-review>header span{font-size:11px;color:#93a097}
+    .preview-frames{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px}
+    .preview-frames h2{font-size:11px;font-weight:500;letter-spacing:.5px;color:#a4b99c;margin-bottom:11px}
+    .preview-frames iframe{width:100%;height:844px;border:1px solid #ffffff12;border-radius:24px;background:#101514;display:block}
+</style>

@@ -1,0 +1,14 @@
+@using Microsoft.AspNetCore.Components.Web
+@using static Microsoft.AspNetCore.Components.Web.RenderMode
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="theme-color" content="#101514" /><base href="/" />
+    <link rel="stylesheet" href="/app.css" /><HeadOutlet @rendermode="InteractiveServer" />
+    <script>
+        function setTheme(theme) { document.documentElement.setAttribute('data-theme', theme); localStorage.setItem('theme', theme); }
+        try { setTheme(localStorage.getItem('theme') || 'dark'); } catch {}
+    </script>
+</head>
+<body><Routes @rendermode="InteractiveServer" /><script src="_framework/blazor.web.js"></script></body>
+</html>

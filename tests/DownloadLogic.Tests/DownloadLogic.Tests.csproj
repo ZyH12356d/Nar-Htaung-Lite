@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../MusicPlayer/Services/DownloadFile.cs" Link="DownloadFile.cs" />
+    <Compile Include="../../MusicPlayer/Services/DownloadRetryPolicy.cs" Link="DownloadRetryPolicy.cs" />
+    <Compile Include="../../MusicPlayer/Services/DownloadService.cs" Link="DownloadService.cs" />
+    <Compile Include="../../MusicPlayer/Models/DownloadItem.cs" Link="DownloadItem.cs" />
+    <Compile Include="../../MusicPlayer/Models/Song.cs" Link="Song.cs" />
+    <Compile Include="../../MusicPlayer/Models/MusicCollection.cs" Link="MusicCollection.cs" />
+    <Compile Include="../../MusicPlayer/Services/CoverArtService.cs" Link="CoverArtService.cs" />
+    <Compile Include="../../MusicPlayer/Services/LibraryService.cs" Link="LibraryService.cs" />
+    <Compile Include="../../MusicPlayer/Services/LibraryService.Collections.cs" Link="LibraryService.Collections.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+    <PackageReference Include="YoutubeExplode" Version="6.6.2" />
+    <PackageReference Include="YoutubeExplode.Converter" Version="6.6.2" />
+    <PackageReference Include="TagLibSharp" Version="2.3.0" />
+    <PackageReference Include="Xabe.FFmpeg.Downloader" Version="6.0.2" />
+  </ItemGroup>
+</Project>

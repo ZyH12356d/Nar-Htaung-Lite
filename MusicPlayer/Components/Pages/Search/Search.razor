@@ -1,61 +1,61 @@
 @page "/search"
-@using YoutubeExplode
-@using YoutubeExplode.Common
 @using YoutubeExplode.Search
-
-<div class="container pb-5" style="padding-top: 2rem;">
-<h3>YouTube Search</h3>
-
-<div class="input-group mb-3">
-    <input type="text" class="form-control" placeholder="Song name..." @bind="searchQuery"
-           @onkeydown="@(async e => { if (e.Key == "Enter") await HandleSearch(); })" />
-    <button class="btn btn-primary" @onclick="HandleSearch">Search</button>
-</div>
-
-@if (isSearching)
-{
-    <p><em>Searching...</em></p>
-}
-
-@if (results.Any())
-{
-    <div class="list-group">
-        @foreach (var video in results)
-        {
-            <div class="list-group-item d-flex align-items-center">
-                <img src="@video.Thumbnails.OrderByDescending(t => t.Resolution.Width).FirstOrDefault()?.Url"
-                     style="width: 120px; border-radius: 8px; margin-right: 15px; flex-shrink: 0;" />
-                <div style="min-width: 0;">
-                    <h5 class="text-truncate mb-1">@video.Title</h5>
-                    <p class="text-muted text-truncate mb-2">@video.Author.ChannelTitle</p>
-                    <button class="btn btn-sm btn-success" @onclick="() => DownloadAudio(video)">
-                        Download
-                    </button>
-                </div>
-            </div>
-        }
-    </div>
-
-    @* Load More / cursor pagination *@
-    @if (hasMore)
+<PageTitle>Search · Nar Htaung Lite</PageTitle>
+<section class="page search-page">
+    <div class="page-heading"><p class="eyebrow">A WORLD OF SOUND</p><h1>Find your next<br /><span class="accent-text">favorite.</span></h1><p class="page-description">Search YouTube. Save a track for later.</p></div>
+    <form class="search-form" @onsubmit="HandleSearch" @onsubmit:preventDefault="true">
+        <label class="search-field"><AppIcon Name="search" Size="21" /><input type="search" aria-label="Search YouTube music" placeholder="Songs, artists, a feeling…" @bind="searchQuery" @bind:event="oninput" disabled="@isSearching" /></label>
+        <button class="button button-primary search-submit" type="submit" disabled="@(isSearching || string.IsNullOrWhiteSpace(searchQuery))" aria-label="Search"><AppIcon Name="arrow" Size="21" /></button>
+    </form>
+    @if (!string.IsNullOrWhiteSpace(_error)) { <div class="notice notice-error" role="alert"><AppIcon Name="alert" Size="20" /><span>@_error</span></div> }
+    @if (isSearching)
     {
-        <div class="d-flex justify-content-center mt-4 mb-3">
-            <button class="btn btn-outline-secondary px-4" @onclick="LoadMore" disabled="@isLoadingMore">
-                @if (isLoadingMore)
-                {
-                    <span class="spinner-border spinner-border-sm me-2" role="status"></span>
-                    <span>Loading...</span>
-                }
-                else
-                {
-                    <span>Load More</span>
-                }
-            </button>
+        <div class="loading-state" role="status"><span class="spinner"></span>Finding your music…</div>
+        <div class="skeleton-list" aria-hidden="true">@for (var i = 0; i < 4; i++) { <div class="skeleton-row"><span></span><div><i></i><i></i></div></div> }</div>
+    }
+    else if (results.Any())
+    {
+        <div class="section-heading search-results-heading"><h2>Search results</h2><span class="muted">@results.Count tracks</span></div>
+        <div class="search-results">
+            @foreach (var video in results)
+            {
+                var download = DownloadService.Downloads.FirstOrDefault(d => d.VideoId == video.Id.Value);
+                var active = download?.Status is Models.DownloadStatus.Waiting or Models.DownloadStatus.Processing or Models.DownloadStatus.Downloading;
+                var complete = download?.Status == Models.DownloadStatus.Completed;
+                <article class="search-result" @key="video.Id.Value">
+                    <div class="search-result-art"><TrackArtwork Source="@video.Thumbnails.OrderByDescending(t => t.Resolution.Width).FirstOrDefault()?.Url" Title="@video.Title" />@if (video.Duration is { } duration) { <span class="duration-pill">@((int)duration.TotalMinutes):@duration.Seconds.ToString("D2")</span> }</div>
+                    <div class="result-copy"><h2>@video.Title</h2><p>@video.Author.ChannelTitle</p>@if (active) { <span class="small-label accent-text">In your download queue</span> } else if (complete) { <span class="small-label accent-text">Saved to your library</span> }</div>
+                    <button class="icon-button result-download @(active || complete ? "is-saved" : "")" @onclick="() => DownloadAudio(video)" disabled="@(active || complete)" aria-label="@(complete ? "Downloaded" : active ? "Queued" : $"Download {video.Title}")"><AppIcon Name="@(active || complete ? "check" : "download")" Size="21" /></button>
+                </article>
+            }
         </div>
+        @if (hasMore) { <div class="load-more"><button class="button button-secondary" @onclick="LoadMore" disabled="@isLoadingMore">@if (isLoadingMore) { <span class="spinner small"></span> } @(isLoadingMore ? "Finding more…" : "Load more tracks")</button></div> }
+        else { <p class="end-note">You’re all caught up.</p> }
     }
-    else if (!isSearching)
+    else if (_hasSearched && string.IsNullOrEmpty(_error))
     {
-        <p class="text-center text-muted mt-3" style="font-size: 0.85rem;">No more results</p>
+        <div class="empty-state"><span class="empty-icon"><AppIcon Name="search" Size="35" /></span><h2>No matches this time.</h2><p>Try a different song title or artist name.</p></div>
     }
+    else if (!_hasSearched)
+    {
+        <div class="section-heading"><h2>Start somewhere</h2></div>
+        <div class="suggestion-chips">@foreach (var suggestion in Suggestions) { <button class="chip" @onclick="() => SearchSuggestion(suggestion)">@suggestion <AppIcon Name="arrow" Size="15" /></button> }</div>
+        <div class="search-intro"><span class="search-intro-art"><AppIcon Name="headphones" Size="60" /></span><h2>Something for every mood.</h2><p>Find a familiar favorite or discover something new.<br />Your next listen is a search away.</p><span class="offline-note"><AppIcon Name="offline" Size="16" />Save it once. Listen anywhere.</span></div>
+    }
+</section>
+
+@if (_pendingDownload is { } pending)
+{
+    <AppDialog Title="Also add to a collection?" Eyebrow="SAVE YOUR NEXT FAVORITE" OnClose="CancelDownload">
+        <p class="dialog-description">“@pending.Title” will be saved to <strong>All downloads</strong>. Choose any other collections for this song.</p>
+        <div class="destination-default"><AppIcon Name="check" Size="20" /><span><strong>All downloads</strong><small>Default collection · Always included</small></span></div>
+        <div class="destination-picker">
+            @foreach (var collection in Library.Collections)
+            {
+                <label class="picker-row"><input type="checkbox" checked="@_downloadCollections.Contains(collection.Id)" @onchange="() => ToggleDestination(collection.Id)" /><AppIcon Name="library" Size="22" /><span><strong>@collection.Name</strong><small>@Library.GetCollectionSongs(collection.Id).Count() tracks</small></span></label>
+            }
+        </div>
+        <p class="small-label muted">Leave these unchecked to save only to All downloads.</p>
+        <div class="collection-dialog-actions"><button class="button button-secondary" @onclick="CancelDownload">Cancel</button><button class="button button-primary" @onclick="ConfirmDownload"><AppIcon Name="download" Size="18" />Download</button></div>
+    </AppDialog>
 }
-</div>

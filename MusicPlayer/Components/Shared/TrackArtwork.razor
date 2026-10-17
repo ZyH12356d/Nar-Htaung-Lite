@@ -1,0 +1,27 @@
+<div class="cover-art cover-tone-@Tone @Class">
+    @if (!string.IsNullOrWhiteSpace(Source) && !_failed)
+    {
+        <img src="@Source" alt="Cover for @Title" loading="@(Eager ? "eager" : "lazy")" decoding="async" @onerror="() => _failed = true" />
+    }
+    else
+    {
+        <div class="cover-placeholder" aria-label="No cover artwork">
+            <span class="cover-orbit"></span>
+            <AppIcon Name="music" Size="36" />
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string? Source { get; set; }
+    [Parameter] public string Title { get; set; } = "Track";
+    [Parameter] public string Class { get; set; } = string.Empty;
+    [Parameter] public bool Eager { get; set; }
+    private bool _failed;
+    private string? _previousSource;
+    private int Tone => (int)((Title ?? "").Aggregate(0u, (hash, c) => hash * 31 + c) % 5);
+    protected override void OnParametersSet()
+    {
+        if (_previousSource != Source) { _failed = false; _previousSource = Source; }
+    }
+}

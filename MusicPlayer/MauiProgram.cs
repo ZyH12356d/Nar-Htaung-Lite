@@ -20,19 +20,12 @@ namespace MusicPlayer
     		builder.Services.AddBlazorWebViewDeveloperTools();
     		builder.Logging.AddDebug();
 #endif
-            builder.Services.AddSingleton(sp => 
-            {
-                var client = new HttpClient();
-                client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.113 Mobile Safari/537.36");
-                return client;
-            });
-            builder.Services.AddSingleton(sp => 
-            {
-                var httpClient = sp.GetRequiredService<HttpClient>();
-                return new YoutubeExplode.YoutubeClient(httpClient);
-            });
+            builder.Services.AddSingleton(_ => new HttpClient());
+            // Let YoutubeExplode manage the headers required by its supported clients.
+            builder.Services.AddSingleton(_ => new YoutubeExplode.YoutubeClient());
             builder.Services.AddSingleton<MusicPlayer.Services.PlayerService>();
             builder.Services.AddSingleton<MusicPlayer.Services.DownloadService>();
+            builder.Services.AddSingleton<MusicPlayer.Services.CoverArtService>();
             builder.Services.AddSingleton<MusicPlayer.Services.NavigationService>();
             builder.Services.AddSingleton<MusicPlayer.Services.LibraryService>();
             

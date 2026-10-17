@@ -1,0 +1,46 @@
+@inject MusicPlayer.Services.PlayerService Player
+@inject MusicPlayer.Services.LibraryService Library
+@implements IDisposable
+<section class="now-playing" role="dialog" aria-modal="true" aria-label="Now playing" @onkeydown="OnKeyDown">
+    <header class="now-playing-header"><button class="icon-button" @ref="_closeButton" @onclick="Close" aria-label="Minimize player"><AppIcon Name="down" /></button><div><p class="eyebrow">NOW PLAYING</p><span>From your collection</span></div><button class="icon-button @(_showQueue ? "active" : "")" @onclick="() => _showQueue = !_showQueue" aria-label="Show play queue" aria-expanded="@_showQueue"><AppIcon Name="queue" /></button></header>
+    @if (Player.CurrentSong is { } song)
+    {
+        <div class="now-playing-body">
+            <div class="player-artwork"><TrackArtwork Source="@song.ArtworkSource" Title="@song.Title" Eager="true" /><span class="artwork-shadow"></span></div>
+            <div class="now-playing-copy"><p class="eyebrow">@(Player.IsPlaying ? "LET IT PLAY" : "TAKE YOUR TIME")</p><h1>@song.Title</h1><p>@song.Author</p></div>
+            <ProgressBar />
+            <div class="playback-controls">
+                <button class="icon-button mode-button @(Player.IsShuffle ? "active" : "")" @onclick="() => Player.IsShuffle = !Player.IsShuffle" aria-label="Shuffle" aria-pressed="@Player.IsShuffle"><AppIcon Name="shuffle" Size="22" /><i></i></button>
+                <button class="icon-button skip-button" @onclick="Player.PlayPrevious" aria-label="Previous track"><AppIcon Name="previous" Size="28" /></button>
+                <button class="player-play-button" @onclick="Player.TogglePlayPause" aria-label="@(Player.IsPlaying ? "Pause" : "Play")"><AppIcon Name="@(Player.IsPlaying ? "pause" : "play")" Size="31" /></button>
+                <button class="icon-button skip-button" @onclick="Player.PlayNext" aria-label="Next track"><AppIcon Name="next" Size="28" /></button>
+                <button class="icon-button mode-button @(Player.IsRepeat ? "active" : "")" @onclick="() => Player.IsRepeat = !Player.IsRepeat" aria-label="Repeat track" aria-pressed="@Player.IsRepeat"><AppIcon Name="repeat" Size="22" /><i></i></button>
+            </div>
+            <div class="player-footnote"><AppIcon Name="offline" Size="15" /><span>Saved on this device</span><span class="footnote-dot">·</span><span>@System.IO.Path.GetExtension(song.FilePath).TrimStart('.').ToUpperInvariant()</span></div>
+        </div>
+    }
+    else { <div class="empty-state"><span class="empty-icon"><AppIcon Name="headphones" Size="38" /></span><h1>Pick a track. Set the mood.</h1><p>Your music is waiting in your library.</p><button class="button button-primary" @onclick="Close">Back to music</button></div> }
+    @if (_showQueue)
+    {
+        <div class="queue-backdrop" @onclick="() => _showQueue = false"></div>
+        <section class="queue-sheet" aria-label="Play queue"><div class="section-heading"><div><p class="eyebrow">KEEP THE MOMENT GOING</p><h2>In the queue <span class="count-label">@Player.Playlist.Count</span></h2></div><button class="icon-button" @onclick="() => _showQueue = false" aria-label="Close queue"><AppIcon Name="close" /></button></div><div class="track-list">@foreach (var track in Player.Playlist) { <TrackRow Song="track" Active="@(track.FilePath == Player.CurrentSong?.FilePath)" Playing="Player.IsPlaying" OnPlay="SelectTrack" /> }</div></section>
+    }
+</section>
+@code {
+    [Parameter] public EventCallback Close { get; set; }
+    private bool _showQueue;
+    private ElementReference _closeButton;
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) await _closeButton.FocusAsync(preventScroll: true);
+    }
+    protected override void OnInitialized() { Player.PropertyChanged += PlayerChanged; Library.LibraryUpdated += LibraryChanged; }
+    private void PlayerChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(Player.CurrentPosition)) _ = InvokeAsync(StateHasChanged);
+    }
+    private void LibraryChanged() => _ = InvokeAsync(StateHasChanged);
+    private async Task SelectTrack(Models.Song song) { await Player.PlaySong(song); _showQueue = false; }
+    private async Task OnKeyDown(KeyboardEventArgs e) { if (e.Key == "Escape") await Close.InvokeAsync(); }
+    public void Dispose() { Player.PropertyChanged -= PlayerChanged; Library.LibraryUpdated -= LibraryChanged; }
+}

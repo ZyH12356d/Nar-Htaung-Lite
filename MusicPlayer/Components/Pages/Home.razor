@@ -1,177 +1,55 @@
 @page "/"
-@using System.IO
 @using MusicPlayer.Models
+<PageTitle>Home · Nar Htaung Lite</PageTitle>
 
-<PageTitle>Nar Htaung Lite - Dashboard</PageTitle>
-
-<div class="container pb-5">
-    <div class="d-flex justify-content-between align-items-center mt-3 mb-4">
-        <h1 class="mb-0">Nar Htaung Lite</h1>
-        <button class="btn btn-link p-0 text-decoration-none" @onclick="ToggleDarkMode">
-            <span class="material-symbols-outlined" style="font-size: 1.8rem; color: var(--text-default);">
-                @(isDarkMode ? "light_mode" : "dark_mode")
-            </span>
-        </button>
+<section class="page home-page">
+    <div class="page-heading home-heading">
+        <div><p class="eyebrow">YOUR PERSONAL SOUNDTRACK</p><h1>Music for<br /><span class="accent-text">your moments.</span></h1><p class="page-description">Your favorites. Saved here. Always with you.</p></div>
+        <div class="hero-record" aria-hidden="true"><div><AppIcon Name="wave" Size="36" /></div></div>
     </div>
-
-    @if (LibraryService.Songs == null || !LibraryService.Songs.Any())
+    @if (_loading)
     {
-        <div class="alert alert-info border-0 shadow-sm" style="background-color: var(--bg-surface); color: var(--text-default);">
-            <p class="mb-0">No music found. Go to the Search page to download some tracks!</p>
-        </div>
+        <div class="loading-state" role="status"><span class="spinner"></span>Opening your library…</div>
+    }
+    else if (!LibraryService.Songs.Any())
+    {
+        <div class="empty-state library-empty"><span class="empty-icon"><AppIcon Name="headphones" Size="38" /></span><h2>A little quiet in here.</h2><p>Find a song you love and make it the first<br />track in your offline collection.</p><a class="button button-primary" href="/search"><AppIcon Name="search" Size="18" /> Find your music</a></div>
     }
     else
     {
-        <div class="list-group">
-            @foreach (var song in LibraryService.Songs)
-            {
-                <div class="list-group-item d-flex justify-content-between align-items-center @(PlayerService.CurrentSong?.FilePath == song.FilePath ? "bg-info text-white" : "")"
-                     @onpointerdown="() => HandlePointerDown(song)"
-                     @onpointerup="HandlePointerUpOrLeave"
-                     @onpointerleave="HandlePointerUpOrLeave"
-                     @oncontextmenu:preventDefault="true">
-                    <div class="d-flex align-items-center" style="cursor:pointer;" @onclick="() => PlayAndExpand(song)">
-                        @if (!string.IsNullOrEmpty(song.ThumbnailDataUrl))
-                        {
-                            <img src="@song.ThumbnailDataUrl" 
-                                 style="width: 50px; height: 50px; border-radius: 8px; margin-right: 15px; object-fit: cover; flex-shrink: 0;" />
-                        }
-                        else
-                        {
-                            <div class="bg-secondary d-flex align-items-center justify-content-center" style="width: 50px; height: 50px; border-radius: 8px; margin-right: 15px; flex-shrink: 0;">
-                                <span class="material-symbols-outlined" style="font-size: 1.5rem; color: white;">music_note</span>
-                            </div>
-                        }
-                        <div>
-                            <div class="fw-bold">@song.Title</div>
-                            <small class="text-muted @(PlayerService.CurrentSong?.FilePath == song.FilePath ? "text-white-50" : "")">@song.Author</small>
-                        </div>
-                    </div>
-                </div>
-            }
-        </div>
+        <div class="library-summary"><span><AppIcon Name="offline" Size="16" />@LibraryService.Songs.Count tracks, ready offline</span><button class="button button-primary small-button" @onclick="ShuffleAll"><AppIcon Name="shuffle" Size="17" />Shuffle</button></div>
+        <section class="recent-section" aria-labelledby="recent-title">
+            <div class="section-heading"><h2 id="recent-title">Fresh in your library</h2><span class="muted">Recently saved</span></div>
+            <div class="cover-carousel">
+                @foreach (var song in LibraryService.Songs.Take(6))
+                {
+                    <button class="album-card" @onclick="() => PlayAndExpand(song)">
+                        <span class="album-card-art"><TrackArtwork Source="@song.ArtworkSource" Title="@song.Title" /><span class="card-play"><AppIcon Name="play" Size="20" /></span></span>
+                        <strong>@song.Title</strong><span>@song.Author</span>
+                    </button>
+                }
+            </div>
+        </section>
+        <section aria-labelledby="tracks-title">
+            <div class="section-heading"><h2 id="tracks-title">All tracks <span class="count-label">@LibraryService.Songs.Count</span></h2></div>
+            <label class="search-field library-filter"><AppIcon Name="search" Size="19" /><input type="search" aria-label="Filter your library" placeholder="Find something in your library" @bind="_filter" @bind:event="oninput" /></label>
+            <div class="track-list">
+                @foreach (var song in FilteredSongs)
+                {
+                    <TrackRow @key="song.FilePath" Song="song" Active="@(PlayerService.CurrentSong?.FilePath == song.FilePath)" Playing="PlayerService.IsPlaying" OnPlay="PlayAndExpand" OnDelete="AskDelete" />
+                }
+            </div>
+            @if (!FilteredSongs.Any()) { <p class="inline-empty">No tracks match “@_filter”.</p> }
+        </section>
     }
-</div>
+</section>
 
-@* Delete Confirmation Modal *@
-@if (_showDeleteModal)
+@if (_songToDelete is not null)
 {
-    <div class="delete-modal-backdrop" @onclick="CancelDelete">
-        <div class="delete-modal" @onclick:stopPropagation="true">
-            <div class="delete-modal-icon">
-                <span class="material-symbols-outlined" style="font-size: 2.5rem; color: #e74c3c;">delete</span>
-            </div>
-            <h5 class="delete-modal-title">Nar Htaung Lite</h5>
-            <p class="delete-modal-message">Are you sure you want to delete <strong>@_songToDelete?.Title</strong>?</p>
-            <div class="delete-modal-actions">
-                <button class="delete-modal-btn delete-modal-btn-cancel" @onclick="CancelDelete">Cancel</button>
-                <button class="delete-modal-btn delete-modal-btn-confirm" @onclick="ConfirmDelete">Delete</button>
-            </div>
-        </div>
+    <div class="modal-backdrop" @onclick="CancelDelete">
+        <section class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-title" @onclick:stopPropagation="true">
+            <span class="empty-icon danger"><AppIcon Name="trash" Size="26" /></span><h2 id="delete-title">Remove this track?</h2><p>“@_songToDelete.Title” will be deleted from your device.</p>
+            <div class="dialog-actions"><button class="button button-secondary" @onclick="CancelDelete">Keep track</button><button class="button button-danger" @onclick="ConfirmDelete">Delete track</button></div>
+        </section>
     </div>
 }
-
-@code {
-    private bool isDarkMode;
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender)
-        {
-            var theme = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "theme");
-            isDarkMode = theme == "dark";
-            StateHasChanged();
-        }
-    }
-
-    private async Task ToggleDarkMode()
-    {
-        isDarkMode = !isDarkMode;
-        var theme = isDarkMode ? "dark" : "light";
-        await JSRuntime.InvokeVoidAsync("setTheme", theme);
-    }
-}
-
-<style>
-    .extra-small { font-size: 0.7rem; }
-
-    .delete-modal-backdrop {
-        position: fixed;
-        top: 0; left: 0; right: 0; bottom: 0;
-        background: rgba(0,0,0,0.55);
-        z-index: 9999;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        animation: fadeIn 0.15s ease;
-    }
-
-    .delete-modal {
-        background: var(--bg-surface, #fff);
-        color: var(--text-default, #222);
-        border-radius: 16px;
-        padding: 1.8rem 1.5rem 1.2rem;
-        width: 85%;
-        max-width: 320px;
-        text-align: center;
-        box-shadow: 0 12px 40px rgba(0,0,0,0.25);
-        animation: scaleIn 0.2s ease;
-    }
-
-    .delete-modal-icon {
-        margin-bottom: 0.5rem;
-    }
-
-    .delete-modal-title {
-        font-weight: 700;
-        font-size: 1.1rem;
-        margin-bottom: 0.5rem;
-    }
-
-    .delete-modal-message {
-        font-size: 0.9rem;
-        color: var(--text-muted, #666);
-        margin-bottom: 1.5rem;
-        line-height: 1.4;
-    }
-
-    .delete-modal-actions {
-        display: flex;
-        gap: 0.75rem;
-    }
-
-    .delete-modal-btn {
-        flex: 1;
-        padding: 0.6rem 1rem;
-        border-radius: 10px;
-        border: none;
-        font-weight: 600;
-        font-size: 0.9rem;
-        cursor: pointer;
-        transition: opacity 0.15s;
-    }
-
-    .delete-modal-btn:active {
-        opacity: 0.7;
-    }
-
-    .delete-modal-btn-cancel {
-        background: var(--border-color, #e0e0e0);
-        color: var(--text-default, #333);
-    }
-
-    .delete-modal-btn-confirm {
-        background: #e74c3c;
-        color: #fff;
-    }
-
-    @@keyframes fadeIn {
-        from { opacity: 0; }
-        to { opacity: 1; }
-    }
-
-    @@keyframes scaleIn {
-        from { transform: scale(0.9); opacity: 0; }
-        to { transform: scale(1); opacity: 1; }
-    }
-</style>

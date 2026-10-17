@@ -1,48 +1,20 @@
 @inject MusicPlayer.Services.DownloadService DownloadService
 @implements IDisposable
 
-<nav class="bottom-nav">
-    <NavLink class="nav-item" href="" Match="NavLinkMatch.All">
-        <span class="material-symbols-outlined nav-icon">home</span>
-        <span class="nav-label">Home</span>
-    </NavLink>
-    <NavLink class="nav-item" href="search" Match="NavLinkMatch.All">
-        <span class="material-symbols-outlined nav-icon">search</span>
-        <span class="nav-label">Search</span>
-    </NavLink>
-    <NavLink class="nav-item" href="album" Match="NavLinkMatch.All">
-        <span class="material-symbols-outlined nav-icon">album</span>
-        <span class="nav-label">Album</span>
-    </NavLink>
-    <NavLink class="nav-item nav-item--downloads" href="downloads" Match="NavLinkMatch.All">
-        <span class="nav-icon-wrapper">
-            <span class="material-symbols-outlined nav-icon">download</span>
-            @if (_activeCount > 0)
-            {
-                <span class="download-badge">@_activeCount</span>
-            }
-        </span>
-        <span class="nav-label">Downloads</span>
-    </NavLink>
+<nav class="bottom-nav" aria-label="Main navigation">
+    <NavLink class="nav-item" href="/" Match="NavLinkMatch.All"><AppIcon Name="home" /><span>Home</span></NavLink>
+    <NavLink class="nav-item" href="/search"><AppIcon Name="search" /><span>Search</span></NavLink>
+    <NavLink class="nav-item" href="/album"><AppIcon Name="library" /><span>Collection</span></NavLink>
+    <NavLink class="nav-item" href="/downloads"><span class="nav-icon-wrap"><AppIcon Name="download" />@if (_active > 0) { <span class="nav-badge">@_active</span> }</span><span>Downloads</span></NavLink>
 </nav>
 
 @code {
-    private int _activeCount;
-
+    private int _active;
     protected override void OnInitialized()
     {
-        _activeCount = DownloadService.ActiveDownloadCount;
-        DownloadService.DownloadsChanged += OnDownloadsChanged;
+        _active = DownloadService.ActiveDownloadCount;
+        DownloadService.DownloadsChanged += Refresh;
     }
-
-    private void OnDownloadsChanged()
-    {
-        _activeCount = DownloadService.ActiveDownloadCount;
-        InvokeAsync(StateHasChanged);
-    }
-
-    public void Dispose()
-    {
-        DownloadService.DownloadsChanged -= OnDownloadsChanged;
-    }
+    private void Refresh() => _ = InvokeAsync(() => { _active = DownloadService.ActiveDownloadCount; StateHasChanged(); });
+    public void Dispose() => DownloadService.DownloadsChanged -= Refresh;
 }

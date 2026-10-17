@@ -1,45 +1,63 @@
 @inherits LayoutComponentBase
+@implements IDisposable
+@inject MusicPlayer.Services.PlayerService PlayerService
+@inject MusicPlayer.Services.NavigationService NavigationService
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
 
-<div class="app-layout">
-    <main class="main-content">
-        @Body
-    </main>
-
-    <div class="bottom-nav-container">
-        <NavMenu />
-    </div>
-
-    @* Global Player Overlay (Mini + Full) *@
-    <PlayerOverlay />
+<div class="app-layout @(PlayerService.CurrentSong is not null ? "has-player" : "")">
+    <header class="app-topbar" inert="@PlayerService.IsPlayerExpanded">
+        <a class="brand" href="/" aria-label="Nar Htaung Lite home"><span class="brand-mark"><AppIcon Name="wave" Size="23" /></span><span>Nar Htaung<span class="brand-lite">LITE</span></span></a>
+        <button class="icon-button theme-toggle" @onclick="ToggleTheme" aria-label="@(_dark ? "Use light theme" : "Use dark theme")"><AppIcon Name="@(_dark ? "sun" : "moon")" Size="21" /></button>
+    </header>
+    <main class="main-content" id="main-content" inert="@PlayerService.IsPlayerExpanded">@Body</main>
+    <div class="bottom-nav-container" inert="@PlayerService.IsPlayerExpanded"><NavMenu /></div>
+    @if (!IsPlayerRoute) { <PlayerOverlay /> }
 </div>
 
-@implements IDisposable
-
 @code {
-    [Inject] private Services.PlayerService PlayerService { get; set; } = default!;
-    [Inject] private Services.NavigationService NavigationService { get; set; } = default!;
-    [Inject] private NavigationManager NavigationManager { get; set; } = default!;
-
+    private bool _dark = true;
+    private bool IsPlayerRoute => NavigationManager.ToBaseRelativePath(NavigationManager.Uri).Split('?')[0] == "player";
     protected override void OnInitialized()
     {
-        NavigationManager.LocationChanged += OnLocationChanged;
-        NavigationService.NavigateToHomeRequested += OnNavigateToHomeRequested;
+        NavigationManager.LocationChanged += LocationChanged;
+        NavigationService.NavigateToHomeRequested += NavigateHome;
+        NavigationService.CollapsePlayerRequested += CollapsePlayer;
+        PlayerService.PropertyChanged += PlayerChanged;
         NavigationService.CurrentPage = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
     }
-
-    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var theme = await JSRuntime.InvokeAsync<string?>("localStorage.getItem", "theme");
+            _dark = theme != "light";
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+    private async Task ToggleTheme()
+    {
+        _dark = !_dark;
+        await JSRuntime.InvokeVoidAsync("setTheme", _dark ? "dark" : "light");
+    }
+    private void LocationChanged(object? sender, LocationChangedEventArgs e)
     {
         NavigationService.CurrentPage = NavigationManager.ToBaseRelativePath(e.Location);
+        PlayerService.IsPlayerExpanded = false;
+        _ = InvokeAsync(StateHasChanged);
     }
-
-    private void OnNavigateToHomeRequested()
+    private void NavigateHome() => _ = InvokeAsync(() => NavigationManager.NavigateTo("/"));
+    private void CollapsePlayer() => _ = InvokeAsync(() => { PlayerService.IsPlayerExpanded = false; });
+    private void PlayerChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        NavigationManager.NavigateTo("/", false);
+        NavigationService.IsPlayerExpanded = PlayerService.IsPlayerExpanded;
+        if (e.PropertyName is nameof(PlayerService.CurrentSong) or nameof(PlayerService.IsPlayerExpanded)) _ = InvokeAsync(StateHasChanged);
     }
-
     public void Dispose()
     {
-        NavigationManager.LocationChanged -= OnLocationChanged;
-        NavigationService.NavigateToHomeRequested -= OnNavigateToHomeRequested;
+        NavigationManager.LocationChanged -= LocationChanged;
+        NavigationService.NavigateToHomeRequested -= NavigateHome;
+        NavigationService.CollapsePlayerRequested -= CollapsePlayer;
+        PlayerService.PropertyChanged -= PlayerChanged;
     }
 }
