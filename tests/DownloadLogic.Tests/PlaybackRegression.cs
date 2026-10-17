@@ -127,6 +127,68 @@ internal static class PlaybackRegression
         Check(test.Player.IsPlaying, "Playback could not recover inside the selected collection.");
     }
 
+    public static async Task NotificationControlsAsync()
+    {
+        await using var test = await Fixture.CreateAsync();
+        await test.Player.PlayFromCollectionAsync(test.First.Id, test.Songs[1]);
+        test.Player.Seek(23);
+        var native = test.Audio.Current;
+        await test.Player.HandleMediaActionAsync(MediaPlaybackActions.Pause);
+        await test.Player.HandleMediaActionAsync(MediaPlaybackActions.Pause);
+        Check(!test.Player.IsPlaying && !test.Notifications.IsPlaying && test.Notifications.HasTrack, "Pausing from the notification removed the track or a repeated pause resumed audio.");
+        await test.Player.HandleMediaActionAsync(MediaPlaybackActions.Play);
+        await test.Player.HandleMediaActionAsync(MediaPlaybackActions.Play);
+        Check(test.Player.IsPlaying && test.Notifications.IsPlaying && test.Audio.Current == native && test.Player.CurrentPosition == 23, "Play commands toggled or restarted the paused song.");
+        for (var i = 0; i < 8; i++)
+        {
+            await test.Player.HandleMediaActionAsync(MediaPlaybackActions.Next);
+            test.CheckFirstCollection();
+            Check(test.Notifications.Title == test.Player.CurrentSong?.Title, "The notification title did not follow Next.");
+            await test.Player.HandleMediaActionAsync(MediaPlaybackActions.Previous);
+            test.CheckFirstCollection();
+        }
+        await test.Player.HandleMediaActionAsync(MediaPlaybackActions.Toggle);
+        Check(!test.Player.IsPlaying, "The media play/pause command was ignored.");
+        await test.Player.SelectCollectionAsync(null);
+        var song = test.Player.CurrentSong;
+        await test.Player.HandleMediaActionAsync("unrecognized");
+        await test.Player.HandleMediaActionAsync(null);
+        Check(test.Player.CurrentSong == song && !test.Player.IsPlaying, "An unknown command changed playback.");
+        await test.Player.HandleMediaActionAsync(MediaPlaybackActions.Next);
+        Check(test.Player.ActiveCollectionId is null && test.Player.Playlist.Count == 5 && test.Player.CurrentSong?.FilePath == test.Songs[2].FilePath, "Notification Next used the previous collection after switching to All downloads.");
+        await test.Player.HandleMediaActionAsync(MediaPlaybackActions.Pause);
+        var other = await test.Library.CreateCollectionAsync("Other songs", new[] { test.Songs[0].FilePath, test.Songs[4].FilePath });
+        await test.Player.SelectCollectionAsync(other.Id);
+        Check(!test.Player.IsPlaying && test.Notifications.Title == test.Player.CurrentSong?.Title && test.Notifications.HasTrack, "Switching collections while paused left the old notification title.");
+        await test.Player.HandleMediaActionAsync(MediaPlaybackActions.Play);
+        await test.Player.HandleMediaActionAsync(MediaPlaybackActions.Previous);
+        Check(test.Player.ActiveCollectionId == other.Id && test.Player.CurrentSong?.FilePath == test.Songs[4].FilePath, "Previous ignored the latest collection.");
+        var empty = await test.Library.CreateCollectionAsync("No tracks", Array.Empty<string>());
+        await test.Player.SelectCollectionAsync(empty.Id);
+        Check(!test.Notifications.HasTrack && test.Notifications.Clears > 0, "An empty collection left stale notification controls.");
+        foreach (var action in new[] { MediaPlaybackActions.Play, MediaPlaybackActions.Pause, MediaPlaybackActions.Next, MediaPlaybackActions.Previous })
+            await test.Player.HandleMediaActionAsync(action);
+        Check(test.Player.CurrentSong is null && !test.Player.IsPlaying && !test.Notifications.HasTrack, "A notification command escaped an empty collection.");
+    }
+
+    public static async Task NotificationRestoreAsync()
+    {
+        await using var test = await Fixture.CreateAsync();
+        await test.Player.PlayFromCollectionAsync(test.First.Id, test.Songs[3]);
+        test.Player.Seek(42);
+        await MainThread.InvokeOnMainThreadAsync(test.Player.Dispose);
+        var notifications = new Notification();
+        using var restored = new PlayerService(test.Audio, notifications, test.Library);
+        // The notification receiver can arrive without opening Home or initializing a page.
+        await restored.HandleMediaActionAsync(MediaPlaybackActions.Play);
+        Check(restored.ActiveCollectionId == test.First.Id && restored.Playlist.Count == 2 && restored.CurrentSong?.FilePath == test.Songs[3].FilePath && restored.CurrentPosition == 42, "Notification resume lost the saved collection or position.");
+        Check(notifications.Title == restored.CurrentSong?.Title && notifications.IsPlaying, "Resumed playback was not reflected in the notification.");
+        await restored.HandleMediaActionAsync(MediaPlaybackActions.Next);
+        Check(restored.CurrentSong?.FilePath == test.Songs[1].FilePath, "Notification Next escaped the restored collection.");
+        await MainThread.InvokeOnMainThreadAsync(restored.Dispose);
+        Check(!notifications.HasTrack, "Disposing playback left a notification active.");
+    }
+
     private static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
     private sealed class Fixture : IAsyncDisposable
     {
@@ -136,6 +198,7 @@ internal static class PlaybackRegression
         public PlayerService Player { get; private set; } = default!;
         public MusicCollection First { get; private set; } = default!;
         public AudioManager Audio { get; } = new();
+        public Notification Notifications { get; } = new();
         private readonly HttpClient _http = new(new Handler());
         public static async Task<Fixture> CreateAsync()
         {
@@ -153,7 +216,7 @@ internal static class PlaybackRegression
             await test.Library.LoadLibraryAsync();
             await test.Library.RefreshArtworkAsync();
             test.First = await test.Library.CreateCollectionAsync("Two favorites", new[] { test.Songs[1].FilePath, test.Songs[3].FilePath });
-            test.Player = new PlayerService(test.Audio, new Notification(), test.Library);
+            test.Player = new PlayerService(test.Audio, test.Notifications, test.Library);
             await test.Player.InitializeAsync();
             return test;
         }
@@ -197,8 +260,13 @@ internal static class PlaybackRegression
     }
     private sealed class Notification : IMediaNotificationService
     {
-        public void UpdateMetadata(string title, string author, string thumbnailUrl, double durationSeconds) { }
-        public void UpdatePlaybackStatus(bool isPlaying, double positionSeconds) { }
+        public string Title { get; private set; } = "";
+        public bool HasTrack { get; private set; }
+        public bool IsPlaying { get; private set; }
+        public int Clears { get; private set; }
+        public void UpdateMetadata(string title, string author, string thumbnailUrl, double durationSeconds) { Title = title; HasTrack = true; }
+        public void UpdatePlaybackStatus(bool isPlaying, double positionSeconds) => IsPlaying = isPlaying;
+        public void Clear() { HasTrack = IsPlaying = false; Title = ""; Clears++; }
     }
     private sealed class Handler : HttpMessageHandler
     {

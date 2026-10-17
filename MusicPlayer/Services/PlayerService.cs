@@ -125,7 +125,12 @@ public class PlayerService : INotifyPropertyChanged, IDisposable
             Duration = CurrentPosition = _resumePosition = 0;
             Preferences.Set("LastSongPath", next?.FilePath ?? "");
             Preferences.Set("LastSongPosition", 0.0);
-            _notificationService.UpdatePlaybackStatus(false, 0);
+            if (next is null) _notificationService.Clear();
+            else
+            {
+                _notificationService.UpdateMetadata(next.Title, next.Author, next.ThumbnailDataUrl, 0);
+                _notificationService.UpdatePlaybackStatus(false, 0);
+            }
             if (next is null) IsPlayerExpanded = false;
         }
     }
@@ -164,7 +169,7 @@ public class PlayerService : INotifyPropertyChanged, IDisposable
         {
             StopNativePlayer();
             IsPlaying = false;
-            _notificationService.UpdatePlaybackStatus(false, 0);
+            _notificationService.Clear();
             Console.WriteLine($"Error playing song natively: {ex.Message}");
         }
     }
@@ -199,7 +204,18 @@ public class PlayerService : INotifyPropertyChanged, IDisposable
         TrackEndedCore();
     });
 
-    public Task TogglePlayPause() => RunAsync(() =>
+    public Task TogglePlayPause() => RunAsync(TogglePlayPauseCore);
+    public Task HandleMediaActionAsync(string? action) => action switch
+    {
+        MediaPlaybackActions.Previous => PlayPrevious(),
+        MediaPlaybackActions.Next => PlayNext(),
+        MediaPlaybackActions.Toggle => TogglePlayPause(),
+        MediaPlaybackActions.Play => RunAsync(() => { if (!IsPlaying) TogglePlayPauseCore(); }),
+        MediaPlaybackActions.Pause => RunAsync(() => { if (IsPlaying) TogglePlayPauseCore(); }),
+        _ => Task.CompletedTask
+    };
+
+    private void TogglePlayPauseCore()
     {
         if (_audioPlayer is null)
         {
@@ -209,7 +225,7 @@ public class PlayerService : INotifyPropertyChanged, IDisposable
         if (IsPlaying) { _audioPlayer.Pause(); _progressTimer.Stop(); IsPlaying = false; }
         else { _audioPlayer.Play(); _progressTimer.Start(); IsPlaying = true; }
         _notificationService.UpdatePlaybackStatus(IsPlaying, _audioPlayer.CurrentPosition);
-    });
+    }
 
     public void Seek(double seconds)
     {
@@ -253,6 +269,7 @@ public class PlayerService : INotifyPropertyChanged, IDisposable
         _disposed = true;
         _library.LibraryUpdated -= LibraryChanged;
         StopNativePlayer();
+        _notificationService.Clear();
         _progressTimer.Dispose();
     }
 }

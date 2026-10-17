@@ -4,5 +4,6 @@ namespace MusicPlayer.Services
     {
         void UpdateMetadata(string title, string author, string thumbnailUrl, double durationSeconds);
         void UpdatePlaybackStatus(bool isPlaying, double positionSeconds);
+        void Clear();
     }
 }

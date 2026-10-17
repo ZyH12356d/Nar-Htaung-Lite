@@ -17,6 +17,7 @@
     <Compile Include="../../MusicPlayer/Services/LibraryService.Collections.cs" Link="LibraryService.Collections.cs" />
     <Compile Include="../../MusicPlayer/Services/PlayerService.cs" Link="PlayerService.cs" />
     <Compile Include="../../MusicPlayer/Services/IMediaNotificationService.cs" Link="IMediaNotificationService.cs" />
+    <Compile Include="../../MusicPlayer/Services/MediaPlaybackActions.cs" Link="MediaPlaybackActions.cs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />

@@ -33,7 +33,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Library refreshes preserve collection playback and membership edits update it", PlaybackRegression.RefreshAsync),
     ("Restarting restores the collection and only its matching song position", PlaybackRegression.RestoreAsync),
     ("Collection shuffle and repeat stay inside the selected queue", PlaybackRegression.ShuffleAsync),
-    ("A native decoder failure cannot retain playback from the previous collection", PlaybackRegression.NativeFailureAsync)
+    ("A native decoder failure cannot retain playback from the previous collection", PlaybackRegression.NativeFailureAsync),
+    ("Notification actions use the active collection and keep metadata and pause state in sync", PlaybackRegression.NotificationControlsAsync),
+    ("Notification resume restores the saved collection without opening a page", PlaybackRegression.NotificationRestoreAsync)
 };
 
 var failed = 0;

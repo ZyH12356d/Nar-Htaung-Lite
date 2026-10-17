@@ -31,3 +31,12 @@ They cover switching collections while playing or paused, next/previous/track-en
 queue updates after membership edits or downloads, restoring a collection after restarting,
 ignoring stale song preferences, shuffle, repeat, and empty collections. Home initializes the
 player without replacing its queue; choosing a Home track or Home shuffle selects All downloads.
+
+Notification command checks cover Previous/Next in the active collection, repeated explicit
+Play/Pause requests, metadata after skips or paused collection changes, clearing an empty queue,
+and resuming the saved collection/position without opening a page.
+
+On an Android device, expand the notification and check Previous, Pause/Play, and Next with
+a custom collection and with All downloads. Repeat with the app in the background and the
+screen locked. A paused notification should remain available for resuming, and emptying the
+active collection should remove its notification.
